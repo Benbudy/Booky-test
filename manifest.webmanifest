@@ -1,8 +1,9 @@
 {
  "name": "BOOKY",
  "short_name": "BOOKY",
- "start_url": "/",
- "scope": "/",
+ "id": "./",
+ "start_url": "./",
+ "scope": "./",
  "display": "standalone",
  "background_color": "#faf5ec",
  "theme_color": "#faf5ec",
