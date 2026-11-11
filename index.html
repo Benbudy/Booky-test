@@ -471,8 +471,21 @@ const imgOk=u=>new Promise(r=>{const i=new Image();i.onload=()=>r(i.width>1);i.o
 $("#file").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;try{curImg=(await shrink(f)).url;showPv();say("Photo enregistrée comme jaquette.")}catch(_){say("Image illisible.")}};
 function loadZX(){return window.ZXing?Promise.resolve():new Promise((ok,ko)=>{const t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js";t.onload=ok;t.onerror=ko;document.head.appendChild(t)})}
 async function readCode(f){
-  try{if("BarcodeDetector" in window){const r=await new BarcodeDetector({formats:["ean_13","ean_8"]}).detect(await createImageBitmap(f));if(r[0])return r[0].rawValue}}catch(_){}
-  try{await loadZX();const r=await new ZXing.BrowserMultiFormatReader().decodeFromImageUrl(URL.createObjectURL(f));return r.getText()}catch(_){return ""}
+  let other="";const take=v=>{v=String(v||"").trim();if(isbnOk(v))return v;if(/^\d{13}$/.test(v)&&!other)other=v;return ""};
+  try{if("BarcodeDetector" in window){const r=await new BarcodeDetector({formats:["ean_13","ean_8"]}).detect(await createImageBitmap(f));for(const x of r){const c=take(x.rawValue);if(c)return c}}}catch(_){}
+  try{
+    await loadZX();
+    const h=new Map();h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13]);h.set(ZXing.DecodeHintType.TRY_HARDER,true);
+    const rd=new ZXing.BrowserMultiFormatReader(h),bm=await createImageBitmap(f);
+    /* essaie la photo entière, puis réduite (plus nette pour les grosses photos), puis moitié basse (code-barres souvent en bas du dos) */
+    for(const [sc,y0] of [[1,0],[.5,0],[.35,0],[1,.45],[.5,.45]]){
+      const w=Math.round(bm.width*sc),H=Math.round(bm.height*(1-y0)),c=document.createElement("canvas");
+      c.width=Math.max(200,Math.round(w));c.height=Math.max(100,Math.round(H*sc));
+      c.getContext("2d").drawImage(bm,0,bm.height*y0,bm.width,bm.height*(1-y0),0,0,c.width,c.height);
+      try{const r=await rd.decodeFromImageUrl(c.toDataURL("image/png"));const v=take(r.getText());if(v)return v}catch(_){}
+    }
+  }catch(_){}
+  return other?"?"+other:"";
 }
 const strip=h=>String(h||"").replace(/<br\s*\/?>/gi," ").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,1500);
 const enc=encodeURIComponent;
@@ -523,7 +536,14 @@ async function findInfo({isbn,title,author,light}){
   if(!syn&&t&&!light)syn=await olSyn(t,a);
   let img=(g&&g.img)||"";
   if(img&&!(await imgOk(img)))img=""
-  if(!img&&isbn){const u="https://covers.openlibrary.org/b/isbn/"+isbn+"-L.jpg?default=false";if(await imgOk(u))img=u}
+  if(!img&&isbn){
+    const i10=isbn10(String(isbn).replace(/[^0-9Xx]/g,"")),cand=["https://covers.openlibrary.org/b/isbn/"+isbn+"-L.jpg?default=false",
+      "https://books.google.com/books/content?vid=ISBN"+isbn+"&printsec=frontcover&img=1&zoom=1"];
+    if(i10)cand.push("https://m.media-amazon.com/images/P/"+i10+".01.L.jpg");
+    for(const u of cand){if(await imgOk(u)){img=u;break}}
+  }
+  if(!img&&t){/* ISBN inconnu des bases : on cherche par titre/auteur (fréquent pour les BD) */
+    const l=await gbooks("intitle:"+enc(t)+(a?"+inauthor:"+enc(a):""),6);const x=l.find(x=>x.img&&simT(x.title,t));if(x&&await imgOk(x.img))img=x.img}
   const meta={publisher:[g&&g.publisher,o&&o.publisher,od&&od.publisher].filter(Boolean).join(" "),year:(g&&g.year)||(o&&o.year)||(od&&od.year)||0,cats:g&&g.cats,subjects:od&&od.subjects,format:o&&o.format,height:(g&&g.height)||(o&&o.height)||0};
   return{title:t,author:a,synopsis:syn,img,isbn:(g&&g.isbn)||isbn||"",cat:guessCat(meta),found:!!(g||o||od)};
 }
@@ -539,6 +559,12 @@ async function lookup(isbn){
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
 const ISBNRE=/^(97[89]\d{10}|\d{9}[\dXx])$/;
+/* un code n'est accepté que si sa clé de contrôle est bonne : évite les fausses lectures de la caméra */
+function isbnOk(c){c=String(c||"").replace(/[^0-9Xx]/g,"");
+  if(/^97[89]\d{10}$/.test(c)){let t=0;for(let i=0;i<12;i++)t+=+c[i]*(i%2?3:1);return (10-t%10)%10===+c[12]}
+  if(/^\d{9}[\dXx]$/.test(c)){let t=0;for(let i=0;i<9;i++)t+=(10-i)*+c[i];t+=(c[9]==="X"||c[9]==="x")?10:+c[9];return t%11===0}
+  return false}
+const isbnTxt=c=>/^\d{13}$/.test(c)&&!/^97[89]/.test(c)?"Ce code ("+c+") est un code interne de l’éditeur, pas un ISBN. Cherche l’autre code-barres (souvent au dos, commençant par 978 ou 979) ou saisis le titre.":"";
 function stopCam(){
   clearInterval(camTimer);camTimer=0;
   if(camReader){try{camReader.reset()}catch(_){}camReader=null}
@@ -555,19 +581,21 @@ async function startCam(){
   const st=$("#camst"),v=$("#camvid");camDone=false;camBusy=false;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say("Caméra indisponible ici : prends une photo du code-barres.");$("#file2").click();return}
   $("#cam").showModal();st.textContent="Démarrage de la caméra…";
-  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false})}
+  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false})}
   catch(e){if($("#cam").open)$("#cam").close();say("Accès à la caméra refusé : autorise-la dans les réglages du navigateur, ou prends une photo du code-barres.");$("#file2").click();return}
   v.srcObject=camStream;try{await v.play()}catch(_){}
+  try{const tr=camStream.getVideoTracks()[0],cp=tr.getCapabilities?tr.getCapabilities():{},adv=[];if(cp.focusMode&&cp.focusMode.includes("continuous"))adv.push({focusMode:"continuous"});if(adv.length)await tr.applyConstraints({advanced:adv})}catch(_){}
+  let badSeen="",badT=0;
   st.textContent="Place le code-barres du livre dans le cadre, bien éclairé.";
   if("BarcodeDetector" in window){
-    const det=new BarcodeDetector({formats:["ean_13","ean_8"]});
-    camTimer=setInterval(async()=>{if(camBusy||camDone||v.readyState<2)return;camBusy=true;try{const r=await det.detect(v),c=r.map(x=>x.rawValue).find(x=>ISBNRE.test(x));if(c)camFound(c)}catch(_){}camBusy=false},250);
+    const det=new BarcodeDetector({formats:["ean_13"]});
+    camTimer=setInterval(async()=>{if(camBusy||camDone||v.readyState<2)return;camBusy=true;try{const r=await det.detect(v),vs=r.map(x=>x.rawValue),c=vs.find(isbnOk);if(c)camFound(c);else{const o=vs.find(x=>/^\d{13}$/.test(x)&&!/^97[89]/.test(x));if(o&&o!==badSeen){badSeen=o;st.textContent=isbnTxt(o)}}}catch(_){}camBusy=false},250);
   }else{
     try{
       await loadZX();
       const h=new Map();h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13]);h.set(ZXing.DecodeHintType.TRY_HARDER,true);
       camReader=new ZXing.BrowserMultiFormatReader(h,250);
-      camReader.decodeFromStream(camStream,v,(res)=>{if(res){const c=res.getText();if(ISBNRE.test(c))camFound(c)}});
+      camReader.decodeFromStream(camStream,v,(res)=>{if(res){const c=res.getText();if(isbnOk(c))camFound(c);else if(/^\d{13}$/.test(c)&&!/^97[89]/.test(c)&&c!==badSeen){badSeen=c;st.textContent=isbnTxt(c)}}});
     }catch(_){st.textContent="Lecture automatique indisponible : ferme et prends une photo du code-barres, ou saisis l’ISBN."}
   }
 }
@@ -644,7 +672,7 @@ function openReco(i){
   $("#ra_me").onclick=()=>add(false);const rf=$("#ra_fam");if(rf)rf.onclick=()=>add(true);
   $("#det").showModal();
 }
-$("#file2").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;say("Lecture du code-barres…");const c=await readCode(f);if(c)lookup(c);else say("Code-barres non lu. Essaie une photo plus nette ou saisis l’ISBN.")};
+$("#file2").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;say("Lecture du code-barres…");const c=await readCode(f);if(c&&c[0]==="?")say(isbnTxt(c.slice(1)));else if(c)lookup(c);else say("Code-barres non lu. Essaie une photo plus nette ou saisis l’ISBN.")};
 $("#lookup").onclick=()=>lookup($("#f_i").value);
 $("#add").onclick=()=>{if(db)openDlg(null,tab==="me"?"me":"fam")};
 $("#cancel").onclick=()=>$("#dlg").close();
@@ -901,6 +929,9 @@ async function fetchCover(b){
   if(b.img&&!isOurs(b.img))src.push(b.img);
   if(t)src.push("https://m.media-amazon.com/images/P/"+t+".01.L.jpg");
   src.push("https://covers.openlibrary.org/b/isbn/"+i+"-L.jpg?default=false");
+  src.push("https://books.google.com/books/content?vid=ISBN"+i+"&printsec=frontcover&img=1&zoom=2");
+  if(t)src.push("https://covers.openlibrary.org/b/isbn/"+t+"-L.jpg?default=false");
+  try{const g=await findInfo({isbn:i,title:b.title,author:b.author,light:true});if(g&&g.img&&!src.includes(g.img))src.push(g.img)}catch(_){}
   for(const u of src){
     try{const r=await fetch(PX(u));if(!r.ok)continue;const bl=await r.blob();if(bl.size<5000||!/image/.test(bl.type))continue;
       const bm=await createImageBitmap(bl);if(bm.width<80||bm.height<100)continue;return bl}catch(_){}
