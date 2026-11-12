@@ -468,6 +468,15 @@ $("#camx").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam()};
 $("#cam").onclose=()=>stopCam();
 const say=m=>$("#scst").textContent=m;
 const imgOk=u=>new Promise(r=>{const i=new Image();i.onload=()=>r(i.width>1);i.onerror=()=>r(false);i.src=u});
+/* Détecte la fausse image grise « image non disponible » de Google (gris-bleu uni, quasi sans contraste) */
+function isPh(bm){try{const W=20,H=30,c=document.createElement("canvas");c.width=W;c.height=H;const x=c.getContext("2d");x.drawImage(bm,0,0,W,H);const d=x.getImageData(0,0,W,H).data,n=W*H;
+  let R=0,G=0,B=0;for(let i=0;i<d.length;i+=4){R+=d[i];G+=d[i+1];B+=d[i+2]}R/=n;G/=n;B/=n;
+  let v=0;const m=.3*R+.59*G+.11*B;for(let i=0;i<d.length;i+=4){const l=.3*d[i]+.59*d[i+1]+.11*d[i+2];v+=(l-m)*(l-m)}
+  const sd=Math.sqrt(v/n),mx=Math.max(R,G,B),mn=Math.min(R,G,B),sat=mx?(mx-mn)/mx:0;
+  return sat<.22&&m>105&&m<205&&sd<24}catch(_){return false}}
+const PXS=u=>"https://wsrv.nl/?url="+encodeURIComponent(u)+"&w=300&h=450&fit=inside&we&output=jpg&q=82";
+/* vraie couverture = image chargée, assez grande, et qui n'est pas la fausse image grise */
+async function imgReal(u){try{const r=await fetch(PXS(u));if(!r.ok)return false;const bl=await r.blob();if(!/image/.test(bl.type)||bl.size<2500)return false;const bm=await createImageBitmap(bl);return bm.width>=80&&bm.height>=100&&!isPh(bm)}catch(_){return imgOk(u)}}
 $("#file").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(!f)return;try{curImg=(await shrink(f)).url;showPv();say("Photo enregistrée comme jaquette.")}catch(_){say("Image illisible.")}};
 function loadZX(){return window.ZXing?Promise.resolve():new Promise((ok,ko)=>{const t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js";t.onload=ok;t.onerror=ko;document.head.appendChild(t)})}
 async function readCode(f){
@@ -535,15 +544,15 @@ async function findInfo({isbn,title,author,light}){
   if(!syn&&t&&!light){const l=await gbooks("intitle:"+enc(t)+(a?"+inauthor:"+enc(a):""),8);const x=l.find(x=>x.synopsis&&simT(x.title,t));if(x)syn=x.synopsis}
   if(!syn&&t&&!light)syn=await olSyn(t,a);
   let img=(g&&g.img)||"";
-  if(img&&!(await imgOk(img)))img=""
+  if(img&&!(await imgReal(img)))img=""
   if(!img&&isbn){
     const i10=isbn10(String(isbn).replace(/[^0-9Xx]/g,"")),cand=["https://covers.openlibrary.org/b/isbn/"+isbn+"-L.jpg?default=false",
       "https://books.google.com/books/content?vid=ISBN"+isbn+"&printsec=frontcover&img=1&zoom=1"];
     if(i10)cand.push("https://m.media-amazon.com/images/P/"+i10+".01.L.jpg");
-    for(const u of cand){if(await imgOk(u)){img=u;break}}
+    for(const u of cand){if(await imgReal(u)){img=u;break}}
   }
   if(!img&&t){/* ISBN inconnu des bases : on cherche par titre/auteur (fréquent pour les BD) */
-    const l=await gbooks("intitle:"+enc(t)+(a?"+inauthor:"+enc(a):""),6);const x=l.find(x=>x.img&&simT(x.title,t));if(x&&await imgOk(x.img))img=x.img}
+    const l=await gbooks("intitle:"+enc(t)+(a?"+inauthor:"+enc(a):""),6);const x=l.find(x=>x.img&&simT(x.title,t));if(x&&await imgReal(x.img))img=x.img}
   const meta={publisher:[g&&g.publisher,o&&o.publisher,od&&od.publisher].filter(Boolean).join(" "),year:(g&&g.year)||(o&&o.year)||(od&&od.year)||0,cats:g&&g.cats,subjects:od&&od.subjects,format:o&&o.format,height:(g&&g.height)||(o&&o.height)||0};
   return{title:t,author:a,synopsis:syn,img,isbn:(g&&g.isbn)||isbn||"",cat:guessCat(meta),found:!!(g||o||od)};
 }
@@ -933,8 +942,8 @@ async function fetchCover(b){
   if(t)src.push("https://covers.openlibrary.org/b/isbn/"+t+"-L.jpg?default=false");
   try{const g=await findInfo({isbn:i,title:b.title,author:b.author,light:true});if(g&&g.img&&!src.includes(g.img))src.push(g.img)}catch(_){}
   for(const u of src){
-    try{const r=await fetch(PX(u));if(!r.ok)continue;const bl=await r.blob();if(bl.size<5000||!/image/.test(bl.type))continue;
-      const bm=await createImageBitmap(bl);if(bm.width<80||bm.height<100)continue;return bl}catch(_){}
+    try{const r=await fetch(PX(u));if(!r.ok)continue;const bl=await r.blob();if(bl.size<2500||!/image/.test(bl.type))continue;
+      const bm=await createImageBitmap(bl);if(bm.width<80||bm.height<100)continue;if(isPh(bm)){if(u===b.img)b._ph=1;continue}return bl}catch(_){}
   }
   return null;
 }
@@ -983,7 +992,7 @@ $("#cv_b").onclick=async()=>{
       try{
         const bl=await fetchCover(b);
         if(bl){const url=await upImg(bl,"c-"+b.id+".jpg");await sbw(d=>sb.from("books").update(d).eq("id",b.id),{img:url});b.img=url;okn++}
-        else{fail++;cvTried.add(b.id)}
+        else{fail++;cvTried.add(b.id);if(b._ph){try{await sbw(d=>sb.from("books").update(d).eq("id",b.id),{img:""});b.img=""}catch(_){}}}
       }catch(err){
         if(/bucket|row-level|policy|not found|Unauthorized/i.test((err&&err.message)||"")){fatal=true;why="Il faut d’abord lancer le SQL des photos dans Supabase (voir le guide).";picSqlMsg()}
         else{fail++}
