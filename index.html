@@ -975,11 +975,11 @@ $("#cv_d").onclick=()=>{
   const why=b=>{const i=String(b.isbn||"").replace(/[^0-9Xx]/g,"");
     if(!i)return["Pas d’ISBN","Scanne le code-barres ou saisis l’ISBN (ou ajoute une photo)."];
     if(!isbnOk(i))return["ISBN invalide","La clé de contrôle est fausse : faute de frappe ou mauvais ISBN. Corrige-le."];
-    if(/^979/.test(i))return["ISBN 979","Amazon ne gère pas les ISBN 979 ; autres sources sans résultat."];
+    if(/^979/.test(i))return["ISBN 979","Je ne peux pas retrouver automatiquement leur image Amazon (pas d’ISBN-10 pour construire l’adresse) ; les autres sources n’ont rien donné. Ouvre la fiche Amazon ci-dessous, enregistre l’image, puis ajoute-la en photo."];
     if(cvTried.has(b.id))return["Introuvable","Aucune source n’a cette couverture : ajoute la photo à la main."];
     return["Pas encore essayé","Clique sur « Chercher les couvertures manquantes »."]};
   const rows=L.map(b=>({b,w:why(b)})).sort((x,y)=>x.w[0].localeCompare(y.w[0])||String(x.b.title).localeCompare(String(y.b.title),"fr"));
-  out.innerHTML="<b>"+L.length+" livre(s) sans couverture</b><br>"+rows.map(r=>"• "+esc(r.b.title)+" — <i>"+esc(r.b.isbn||"sans ISBN")+"</i> — <b>"+r.w[0]+"</b> : "+r.w[1]).join("<br>");
+  out.innerHTML="<b>"+L.length+" livre(s) sans couverture</b><br>"+rows.map(r=>"• "+esc(r.b.title)+" — <i>"+esc(r.b.isbn||"sans ISBN")+"</i> — <b>"+r.w[0]+"</b> : "+r.w[1]+(r.b.isbn?" <a href=\"https://www.amazon.fr/s?k="+encodeURIComponent(String(r.b.isbn).replace(/[^0-9Xx]/g,""))+"\" target=\"_blank\" rel=\"noopener\">Voir sur Amazon</a>":"")).join("<br>");
 };
 $("#cv_r").onclick=async()=>{
   const st=$("#cv_s");if(demo||cvRun)return;
