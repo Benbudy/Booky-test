@@ -207,6 +207,7 @@ input[type=checkbox]{width:auto;padding:0}
   <label class="lb">Nouveau mot de passe</label><div class="row"><input id="s_p" type="password" autocomplete="new-password" placeholder="6 caractères min."><button class="btn sm" id="s_pb" style="flex:none">Changer</button></div>
   <div class="acts" style="margin-top:14px"><button class="btn ghost sm" id="s_ex">Exporter mes livres</button><button class="btn ghost sm" id="out">Se déconnecter</button><button class="btn ghost sm" id="s_del" style="color:var(--acc)">Supprimer mon compte</button></div>
   <div id="s_m" style="font-size:.8rem;color:var(--mute);margin-top:8px"></div></div>
+  <div id="appver" class="mu" style="text-align:center;margin:18px 0 6px;font-size:.78rem"></div>
 <div id="v-adm" hidden><h2>Administration</h2><div id="adm"></div></div>
 </div>
 <div id="msg"></div>
@@ -232,7 +233,7 @@ input[type=checkbox]{width:auto;padding:0}
 
 <dialog id="dlg">
   <h2 id="dt" style="margin:0 0 4px">Nouveau livre</h2>
-  <div class="scan"><div id="pv"></div><div><button class="btn sm" id="codebtn" type="button">📷 Scanner avec la caméra</button> <button class="btn ghost sm" id="scanbtn" type="button">Photo de la couverture</button><div id="scst"></div></div></div>
+  <div class="scan"><div id="pv"></div><div><button class="btn sm" id="codebtn" type="button">📷 Scanner avec la caméra</button> <button class="btn ghost sm" id="scanbtn" type="button">Photo de la couverture</button> <button class="btn ghost sm" id="pastebtn" type="button">📋 Coller une image</button><div id="scst"></div></div></div>
   <label>ISBN</label><div class="row"><input id="f_i" inputmode="numeric" maxlength="20" placeholder="978…"><button class="btn ghost sm" id="lookup" type="button" style="flex:none">Chercher</button></div>
   <input type="file" id="file" accept="image/*" hidden>
   <input type="file" id="file2" accept="image/*" hidden>
@@ -463,6 +464,7 @@ $("#f_c").onchange=()=>{catTouched=true};
 function showPv(){$("#pv").innerHTML=curImg?`<img class="cov" alt="" src="${esc(curImg)}">`:""}
 function shrink(f,mx,my){return new Promise((ok,ko)=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const r=Math.min(1,(mx||300)/im.width,(my||440)/im.height),c=document.createElement("canvas");c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(bl=>{const fr=new FileReader();fr.onload=()=>ok({url:fr.result,blob:bl});fr.readAsDataURL(bl)},"image/jpeg",.72)};im.onerror=ko;im.src=u})}
 $("#scanbtn").onclick=()=>$("#file").click();
+$("#pastebtn").onclick=async()=>{const bl=await clipImage();if(!bl)return;try{curImg=(await shrink(bl)).url;showPv();say("Image collée comme jaquette.")}catch(_){say("Image illisible.")}};
 $("#codebtn").onclick=()=>startCam();
 $("#camx").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam()};
 $("#cam").onclose=()=>stopCam();
@@ -569,6 +571,8 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.synopsis||$("#f_y").value?"":" (synopsis introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
+const APP_VERSION="v8 · 12/11/2026";
+try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const lastCat=()=>{try{const v=localStorage.getItem("booky-lastcat");return["poche","grand","ancien","bd"].includes(v)?v:"poche"}catch(_){return"poche"}};
 const ISBNRE=/^(97[89]\d{10}|\d{9}[\dXx])$/;
 /* un code n'est accepté que si sa clé de contrôle est bonne : évite les fausses lectures de la caméra */
@@ -583,6 +587,10 @@ function stopCam(){
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null}
   const v=$("#camvid");if(v)v.srcObject=null;
 }
+let camLast="",camCnt=0,camT=0;
+/* un code n'est accepté que s'il est lu 2 fois de suite : évite les fausses lectures qui passent la clé de contrôle */
+function camVote(c){const n=Date.now();if(c===camLast&&n-camT<2500)camCnt++;else{camLast=c;camCnt=1}camT=n;
+  if(camCnt>=2)camFound(c);else{const st=$("#camst");if(st)st.textContent="Code lu : "+c+" — confirmation… garde le code-barres bien en face."}}
 function camFound(c){
   if(camDone)return;camDone=true;
   try{navigator.vibrate&&navigator.vibrate(60)}catch(_){}
@@ -590,7 +598,7 @@ function camFound(c){
   lookup(c);
 }
 async function startCam(){
-  const st=$("#camst"),v=$("#camvid");camDone=false;camBusy=false;
+  const st=$("#camst"),v=$("#camvid");camDone=false;camBusy=false;camLast="";camCnt=0;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say("Caméra indisponible ici : prends une photo du code-barres.");$("#file2").click();return}
   $("#cam").showModal();st.textContent="Démarrage de la caméra…";
   try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false})}
@@ -601,13 +609,13 @@ async function startCam(){
   st.textContent="Place le code-barres du livre dans le cadre, bien éclairé.";
   if("BarcodeDetector" in window){
     const det=new BarcodeDetector({formats:["ean_13"]});
-    camTimer=setInterval(async()=>{if(camBusy||camDone||v.readyState<2)return;camBusy=true;try{const r=await det.detect(v),vs=r.map(x=>x.rawValue),c=vs.find(isbnOk);if(c)camFound(c);else{const o=vs.find(x=>/^\d{13}$/.test(x)&&!/^97[89]/.test(x));if(o&&o!==badSeen){badSeen=o;st.textContent=isbnTxt(o)}}}catch(_){}camBusy=false},250);
+    camTimer=setInterval(async()=>{if(camBusy||camDone||v.readyState<2)return;camBusy=true;try{const r=await det.detect(v),vs=r.map(x=>x.rawValue),c=vs.find(isbnOk);if(c)camVote(c);else{const o=vs.find(x=>/^\d{13}$/.test(x)&&!/^97[89]/.test(x));if(o&&o!==badSeen){badSeen=o;st.textContent=isbnTxt(o)}}}catch(_){}camBusy=false},250);
   }else{
     try{
       await loadZX();
       const h=new Map();h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13]);h.set(ZXing.DecodeHintType.TRY_HARDER,true);
       camReader=new ZXing.BrowserMultiFormatReader(h,250);
-      camReader.decodeFromStream(camStream,v,(res)=>{if(res){const c=res.getText();if(isbnOk(c))camFound(c);else if(/^\d{13}$/.test(c)&&!/^97[89]/.test(c)&&c!==badSeen){badSeen=c;st.textContent=isbnTxt(c)}}});
+      camReader.decodeFromStream(camStream,v,(res)=>{if(res){const c=res.getText();if(isbnOk(c))camVote(c);else if(/^\d{13}$/.test(c)&&!/^97[89]/.test(c)&&c!==badSeen){badSeen=c;st.textContent=isbnTxt(c)}}});
     }catch(_){st.textContent="Lecture automatique indisponible : ferme et prends une photo du code-barres, ou saisis l’ISBN."}
   }
 }
@@ -738,6 +746,25 @@ $("#zdel").onclick=async e=>{e.stopPropagation();const b=bookOf(zctx);if(!b||!co
   try{await sbw(d=>sb.from("books").update(d).eq("id",b.id),patch);const m=String(u).match(/\/object\/public\/covers\/(.+)$/);if(m)try{await sb.storage.from("covers").remove([decodeURIComponent(m[1])])}catch(_){}
    $("#zoom").close();await load();openDet(zctx.s,zctx.id)}catch(_){alert("Suppression impossible.")}};
 function resizeBlob(f,max,q){return new Promise((ok,ko)=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const r=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(b=>b?ok(b):ko(new Error("img")),"image/jpeg",q)};im.onerror=()=>{URL.revokeObjectURL(u);ko(new Error("img"))};im.src=u})}
+async function clipImage(){
+  try{if(!navigator.clipboard||!navigator.clipboard.read)throw 0;
+    for(const it of await navigator.clipboard.read()){const ty=it.types.find(x=>x.startsWith("image/"));if(ty)return await it.getType(ty)}
+    alert("Aucune image dans le presse-papiers. Copie d’abord l’image (appui long sur l’image > Copier), puis réessaie.");return null}
+  catch(_){alert("Collage impossible ici. Copie l’image, puis fais Ctrl+V (ordinateur) ou autorise l’accès au presse-papiers.");return null}
+}
+async function setCoverFromBlob(b,f){
+  if(!b||b.by!==uid||demo)return;
+  try{const bl=await resizeBlob(f,900,.85),url=await upImg(bl,"p-"+b.id+"-"+Date.now().toString(36)+".jpg"),old=b.img;
+    await sbw(d=>sb.from("books").update(d).eq("id",b.id),{img:url});
+    const m=String(old||"").match(/\/object\/public\/covers\/(.+)$/);if(m){const q=decodeURIComponent(m[1]);if(q.startsWith(uid+"/c-"))try{await sb.storage.from("covers").remove([q])}catch(_){}}
+    await load();openDet(curDet.s,curDet.id)}
+  catch(err){if(/bucket|row-level|policy|not found/i.test((err&&err.message)||""))picSqlMsg();else alert("Envoi impossible : "+((err&&err.message)||"erreur"))}
+}
+document.addEventListener("paste",async e=>{
+  const f=[...(e.clipboardData&&e.clipboardData.files||[])].find(x=>/^image\//.test(x.type));if(!f)return;
+  if($("#dlg").open){e.preventDefault();try{curImg=(await shrink(f)).url;showPv();say("Image collée comme jaquette.")}catch(_){say("Image illisible.")}}
+  else if($("#det").open&&curDet){const b=bookOf(curDet);if(b&&b.by===uid){e.preventDefault();setCoverFromBlob(b,f)}}
+});
 async function rmFiles(books){
   try{const paths=new Set();(books||[]).forEach(b=>[b.img,...(Array.isArray(b.pics)?b.pics:[])].forEach(u=>{const m=String(u||"").match(/\/object\/public\/covers\/(.+)$/);if(m){const p=decodeURIComponent(m[1]);if(p.startsWith(uid+"/"))paths.add(p)}}));
     const a=[...paths];for(let k=0;k<a.length;k+=100)await sb.storage.from("covers").remove(a.slice(k,k+100))}catch(_){}
@@ -755,11 +782,12 @@ $("#detc").addEventListener("click",e=>{const t=e.target.closest(".pt");if(!t)re
 function openDet(s,id){
   const b=(s==="me"?mine:fam).find(x=>x.id===id);if(!b)return;
   $("#detc").innerHTML=cardFull([{...b,_s:s}],s,"")+(b.isbn?`<div class="au" style="margin-top:8px;color:var(--mute);font-size:.85rem">ISBN ${esc(b.isbn)}</div>`:"");
-  $("#detc").insertAdjacentHTML("beforeend",(b.synopsis?`<p class="syn">${esc(b.synopsis)}</p>`:"")+(b.by===uid&&(!b.img||!b.synopsis)?`<button class="btn sm ghost" id="enr" style="margin-top:10px">Compléter couverture et synopsis</button>`:""));
+  $("#detc").insertAdjacentHTML("beforeend",(b.synopsis?`<p class="syn">${esc(b.synopsis)}</p>`:"")+(b.by===uid&&(!b.img||!b.synopsis)?`<button class="btn sm ghost" id="enr" style="margin-top:10px">Compléter couverture et synopsis</button>`:"")+(b.by===uid&&!demo?`<button class="btn sm ghost" id="pcov" style="margin-top:10px">📋 Coller une image comme couverture</button>`:""));
   curDet={s,id};
   {const own=b.by===uid,g=galleryOf(b);
    if(own||g.length>1)$("#detc").insertAdjacentHTML("beforeend",`<div class="pics"><div class="ph"><b>Photos et pages${g.length?" ("+g.length+")":""}</b>${own&&!demo?'<button class="btn sm ghost" id="pa" type="button">+ Ajouter</button>':""}</div>${g.length?`<div class="pr">${g.map((u,k)=>`<img class="pt${u===b.img?" cv":""}" data-g="${k}" loading="lazy" decoding="async" alt="" src="${esc(u)}">`).join("")}</div>`:'<div class="mu">Ajoute des photos de pages, de la tranche ou une autre couverture, puis choisis celle à afficher.</div>'}</div>`);}
   const pa=$("#pa");if(pa)pa.onclick=()=>$("#pf").click();
+  const pc=$("#pcov");if(pc)pc.onclick=async()=>{const bl=await clipImage();if(!bl)return;pc.textContent="Envoi…";pc.disabled=true;await setCoverFromBlob(b,bl)};
   const en=$("#enr");if(en)en.onclick=async()=>{en.textContent="Recherche…";const g=await findInfo({isbn:b.isbn,title:b.title,author:b.author});if(!g.img&&!g.synopsis){en.textContent="Rien trouvé";return}const img=b.img||g.img;try{await ok(sb.from("books").update({img,synopsis:b.synopsis||g.synopsis,isbn:b.isbn||g.isbn}).eq("id",b.id));await load();openDet(s,id)}catch(_){en.textContent="Échec"}};
   if(!$("#det").open)$("#det").showModal();
 }
@@ -948,6 +976,7 @@ async function fetchCover(b){
   src.push("https://covers.openlibrary.org/b/isbn/"+i+"-L.jpg?default=false");
   src.push("https://books.google.com/books/content?vid=ISBN"+i+"&printsec=frontcover&img=1&zoom=2");
   if(t)src.push("https://covers.openlibrary.org/b/isbn/"+t+"-L.jpg?default=false");
+  src.push("https://pictures.abebooks.com/isbn/"+i+"-us-300.jpg","https://pictures.abebooks.com/isbn/"+i+"-fr-300.jpg","https://products-images.di-static.com/image/x/"+i+"-475x500-1.jpg");
   try{const g=await findInfo({isbn:i,title:b.title,author:b.author,light:true});if(g&&g.img&&!src.includes(g.img))src.push(g.img)}catch(_){}
   const tryU=async u=>{
     try{const r=await fetch(PX(u));if(!r.ok)return null;const bl=await r.blob();if(bl.size<2500||!/image/.test(bl.type))return null;
