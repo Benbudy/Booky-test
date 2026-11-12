@@ -193,7 +193,7 @@ input[type=checkbox]{width:auto;padding:0}
     <div class="acts"><button class="btn ghost sm" id="se_b" type="button">Ranger en séries d’après les titres</button></div>
     <div id="se_s" class="mu" style="margin-top:6px">Repère les titres du type « Astérix T5 - … » et renseigne la série et le tome.</div>
     <label class="lb" style="margin-top:16px">Couvertures</label>
-    <div class="acts"><button class="btn sm" id="cv_b" type="button">Chercher les couvertures manquantes</button><button class="btn ghost sm" id="cv_x" type="button" hidden>Arrêter</button><button class="btn ghost sm" id="cv_r" type="button">Effacer les couvertures enregistrées</button></div>
+    <div class="acts"><button class="btn sm" id="cv_b" type="button">Chercher les couvertures manquantes</button><button class="btn ghost sm" id="cv_x" type="button" hidden>Arrêter</button><button class="btn ghost sm" id="cv_r" type="button">Effacer les couvertures enregistrées</button><button class="btn ghost sm" id="cv_d" type="button">Diagnostic des sans-couverture</button></div><div id="cv_l" class="mu" style="margin-top:8px;font-size:.82rem"></div>
     <div id="cv_s" class="mu" style="margin-top:6px">Cherche chaque couverture par ISBN (Amazon, Open Library) et la copie dans ton Supabase. Les livres sans couverture trouvée gardent leur jaquette colorée.</div>
     <label class="lb" style="margin-top:16px">Synopsis manquants</label>
     <div class="acts"><button class="btn ghost sm" id="en_b" type="button">Chercher les synopsis</button><button class="btn ghost sm" id="en_x" type="button" hidden>Arrêter</button></div>
@@ -451,7 +451,7 @@ function openDlg(b,w){
   $("#serlist").innerHTML=[...new Set([...mine,...fam].map(x=>x.series).filter(Boolean))].sort().map(x=>`<option value="${esc(x)}">`).join("");
   $("#f_s").value=b?b.status||"alire":"alire";$("#f_r").value=b?b.rating||0:0;
   $("#f_w").value=(w==="me"||!me.can)?"me":"fam";$("#f_w").disabled=!!b||!me.can;
-  $("#f_c").value=b?(b.cat||"poche"):"ancien";curImg=b&&b.img||"";$("#f_i").value=b&&b.isbn||"";$("#f_y").value=b&&b.synopsis||"";showPv();
+  $("#f_c").value=b?(b.cat||"poche"):lastCat();curImg=b&&b.img||"";$("#f_i").value=b&&b.isbn||"";$("#f_y").value=b&&b.synopsis||"";showPv();
   catTouched=false;catAuto=false;
   $("#scst").textContent="Scanne le code-barres pour retrouver le livre, sa jaquette, son synopsis et son format.";
   document.querySelector(`input[name=col][value="${b&&b.color||COLORS[0]}"]`).checked=true;
@@ -459,7 +459,7 @@ function openDlg(b,w){
 }
 let curImg="",catSel="",curIsbn="",catTouched=false,catAuto=false;
 $("#f_c").onchange=()=>{catTouched=true};
-$("#f_i").oninput=()=>{if(!editing&&!catTouched&&!catAuto&&!$("#f_i").value.trim())$("#f_c").value="ancien"};
+
 function showPv(){$("#pv").innerHTML=curImg?`<img class="cov" alt="" src="${esc(curImg)}">`:""}
 function shrink(f,mx,my){return new Promise((ok,ko)=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const r=Math.min(1,(mx||300)/im.width,(my||440)/im.height),c=document.createElement("canvas");c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(bl=>{const fr=new FileReader();fr.onload=()=>ok({url:fr.result,blob:bl});fr.readAsDataURL(bl)},"image/jpeg",.72)};im.onerror=ko;im.src=u})}
 $("#scanbtn").onclick=()=>$("#file").click();
@@ -473,6 +473,8 @@ function isPh(bm){try{const W=20,H=30,c=document.createElement("canvas");c.width
   let R=0,G=0,B=0;for(let i=0;i<d.length;i+=4){R+=d[i];G+=d[i+1];B+=d[i+2]}R/=n;G/=n;B/=n;
   let v=0;const m=.3*R+.59*G+.11*B;for(let i=0;i<d.length;i+=4){const l=.3*d[i]+.59*d[i+1]+.11*d[i+2];v+=(l-m)*(l-m)}
   const sd=Math.sqrt(v/n),mx=Math.max(R,G,B),mn=Math.min(R,G,B),sat=mx?(mx-mn)/mx:0;
+  let wh=0;for(let i=0;i<d.length;i+=4)if(Math.min(d[i],d[i+1],d[i+2])>212)wh++;
+  if(wh/n>.88)return true; /* fond blanc quasi uni = « image not available » */
   return sat<.26&&m>100&&m<215&&sd<32}catch(_){return false}}
 const PXS=u=>"https://wsrv.nl/?url="+encodeURIComponent(u)+"&w=300&h=450&fit=inside&we&output=jpg&q=82";
 /* vraie couverture = image chargée, assez grande, et qui n'est pas la fausse image grise */
@@ -563,10 +565,11 @@ async function lookup(isbn){
   if(r.title){$("#f_t").value=r.title.slice(0,120);$("#f_a").value=(r.author||"").slice(0,80)}
   if(r.synopsis&&!$("#f_y").value)$("#f_y").value=r.synopsis;
   if(r.img&&!curImg){curImg=r.img;showPv()}
-  if(r.cat&&!catTouched&&!editing){$("#f_c").value=r.cat;catAuto=true}
+  
   say(r.title?"Livre trouvé"+(r.synopsis||$("#f_y").value?"":" (synopsis introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
+const lastCat=()=>{try{const v=localStorage.getItem("booky-lastcat");return["poche","grand","ancien","bd"].includes(v)?v:"poche"}catch(_){return"poche"}};
 const ISBNRE=/^(97[89]\d{10}|\d{9}[\dXx])$/;
 /* un code n'est accepté que si sa clé de contrôle est bonne : évite les fausses lectures de la caméra */
 function isbnOk(c){c=String(c||"").replace(/[^0-9Xx]/g,"");
@@ -689,8 +692,9 @@ $("#save").onclick=async()=>{
   const title=$("#f_t").value.trim();if(!title){$("#f_t").focus();return}
   const data={title,author:$("#f_a").value.trim(),status:$("#f_s").value,rating:+$("#f_r").value,color:document.querySelector("input[name=col]:checked").value,cat:$("#f_c").value,img:curImg||"",isbn:$("#f_i").value.trim(),synopsis:$("#f_y").value.trim(),series:$("#f_se").value.trim()||null,tome:$("#f_to").value===""?null:parseInt($("#f_to").value)};
   {const old=editing&&[...mine,...fam].find(x=>x.id===editing.id),had=old&&(old.series||old.tome!=null);if(!had){if(data.series==null)delete data.series;if(data.tome==null)delete data.tome}}
-  const needCat=!editing&&!catTouched&&!catAuto&&!!data.isbn;
+  const needCat=false;
   if(!data.img||!data.synopsis||needCat){$("#save").disabled=true;try{const r=await findInfo({isbn:data.isbn,title,author:data.author});if(!data.img&&r.img)data.img=r.img;if(!data.synopsis)data.synopsis=r.synopsis;if(!data.isbn&&data.cat!=="ancien")data.isbn=r.isbn;if(needCat&&r.cat)data.cat=r.cat}catch(_){}}
+  if(!editing)try{localStorage.setItem("booky-lastcat",data.cat)}catch(_){}
   try{
     if(editing)await sbw(d=>sb.from("books").update(d).eq("id",editing.id),data);
     else await sbw(d=>sb.from("books").insert(d),{...data,shared:$("#f_w").value==="fam"});
@@ -705,7 +709,7 @@ async function onAct(e){
   const {id:_i,_s,...rest}=b;
   try{
     if(a==="edit")openDlg(b,s);
-    else if(a==="del"){if(confirm("Supprimer « "+b.title+" » ?"))await ok(sb.from("books").delete().eq("id",id))}
+    else if(a==="del"){if(confirm("Supprimer « "+b.title+" » ?")){await ok(sb.from("books").delete().eq("id",id));await rmFiles([b])}}
     else if(a==="share"){if(confirm("Partager ce livre avec toute la famille ?"))await ok(sb.from("books").update({shared:true}).eq("id",id))}
     else if(a==="priv"){if(confirm("Retirer ce livre de la famille et le garder en privé ?"))await ok(sb.from("books").update({shared:false,borrowed_by:null}).eq("id",id))}
     else if(a==="borrow")await ok(sb.rpc("borrow_book",{bid:id,take:true}));
@@ -734,6 +738,10 @@ $("#zdel").onclick=async e=>{e.stopPropagation();const b=bookOf(zctx);if(!b||!co
   try{await sbw(d=>sb.from("books").update(d).eq("id",b.id),patch);const m=String(u).match(/\/object\/public\/covers\/(.+)$/);if(m)try{await sb.storage.from("covers").remove([decodeURIComponent(m[1])])}catch(_){}
    $("#zoom").close();await load();openDet(zctx.s,zctx.id)}catch(_){alert("Suppression impossible.")}};
 function resizeBlob(f,max,q){return new Promise((ok,ko)=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const r=Math.min(1,max/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(b=>b?ok(b):ko(new Error("img")),"image/jpeg",q)};im.onerror=()=>{URL.revokeObjectURL(u);ko(new Error("img"))};im.src=u})}
+async function rmFiles(books){
+  try{const paths=new Set();(books||[]).forEach(b=>[b.img,...(Array.isArray(b.pics)?b.pics:[])].forEach(u=>{const m=String(u||"").match(/\/object\/public\/covers\/(.+)$/);if(m){const p=decodeURIComponent(m[1]);if(p.startsWith(uid+"/"))paths.add(p)}}));
+    const a=[...paths];for(let k=0;k<a.length;k+=100)await sb.storage.from("covers").remove(a.slice(k,k+100))}catch(_){}
+}
 async function upImg(blob,name){const path=uid+"/"+name,r=await sb.storage.from("covers").upload(path,blob,{contentType:"image/jpeg",cacheControl:"31536000"});if(r.error&&!/exist|duplicate/i.test(r.error.message||""))throw r.error;return sb.storage.from("covers").getPublicUrl(path).data.publicUrl}
 $("#pf").onchange=async e=>{
   const fs=[...e.target.files];e.target.value="";const b=bookOf(curDet);if(!fs.length||!b||demo)return;
@@ -910,7 +918,7 @@ $("#seldel").onclick=async()=>{
   if(demo){alert("Indisponible en mode aperçu.");return}
   if(!confirm("Supprimer définitivement "+ids.length+" livre(s) ? Cette action est irréversible."))return;
   $("#seldel").disabled=true;
-  try{for(let i=0;i<ids.length;i+=60){$("#selcnt").textContent="Suppression "+Math.min(i+60,ids.length)+" / "+ids.length+"…";await ok(sb.from("books").delete().in("id",ids.slice(i,i+60)))}}
+  try{for(let i=0;i<ids.length;i+=60){$("#selcnt").textContent="Suppression "+Math.min(i+60,ids.length)+" / "+ids.length+"…";const part=ids.slice(i,i+60),old=[...mine,...fam].filter(x=>part.includes(x.id));await ok(sb.from("books").delete().in("id",part));await rmFiles(old)}}
   catch(e){alert("Suppression interrompue : "+(e&&e.message?e.message:"erreur")+". Les livres déjà supprimés le restent.")}
   selMode=false;sel=new Set();await load();
 };
@@ -941,10 +949,19 @@ async function fetchCover(b){
   src.push("https://books.google.com/books/content?vid=ISBN"+i+"&printsec=frontcover&img=1&zoom=2");
   if(t)src.push("https://covers.openlibrary.org/b/isbn/"+t+"-L.jpg?default=false");
   try{const g=await findInfo({isbn:i,title:b.title,author:b.author,light:true});if(g&&g.img&&!src.includes(g.img))src.push(g.img)}catch(_){}
-  for(const u of src){
-    try{const r=await fetch(PX(u));if(!r.ok)continue;const bl=await r.blob();if(bl.size<2500||!/image/.test(bl.type))continue;
-      const bm=await createImageBitmap(bl);if(bm.width<80||bm.height<100)continue;if(isPh(bm)){if(u===b.img)b._ph=1;continue}return bl}catch(_){}
-  }
+  const tryU=async u=>{
+    try{const r=await fetch(PX(u));if(!r.ok)return null;const bl=await r.blob();if(bl.size<2500||!/image/.test(bl.type))return null;
+      const bm=await createImageBitmap(bl);if(bm.width<80||bm.height<100)return null;if(isPh(bm)){if(u===b.img)b._ph=1;return null}return bl}catch(_){return null}
+  };
+  for(const u of src){const bl=await tryU(u);if(bl)return bl}
+  /* repli : ISBN inconnu ou faux -> recherche par titre de l'album (et auteur) sur Open Library */
+  try{
+    const album=(String(b.title||"").split(" - ").slice(1).join(" - ")||b.title||"").trim(),au=String(b.author||"").split(",")[0].trim();
+    if(album.length>2){
+      const j=await jget("https://openlibrary.org/search.json?limit=6&fields=title,cover_i&title="+enc(album)+(au?"&author="+enc(au):""));
+      for(const x of (j&&j.docs)||[]){if(!x.cover_i||!simT(x.title,album))continue;const bl=await tryU("https://covers.openlibrary.org/b/id/"+x.cover_i+"-L.jpg");if(bl)return bl}
+    }
+  }catch(_){}
   return null;
 }
 let cvRun=false,cvTried=new Set();
@@ -952,6 +969,18 @@ try{cvTried=new Set(JSON.parse(localStorage.getItem("booky-cvtried")||"[]"))}cat
 const cvCands=()=>[...mine,...fam.filter(b=>b.by===uid)].filter(b=>/^\d{13}$|^\d{9}[\dXx]$/.test(String(b.isbn||"").replace(/[^0-9Xx]/g,""))&&!isOurs(b.img));
 function cvLabel(){const n=cvCands().filter(b=>!cvTried.has(b.id)).length;if($("#cv_b")&&!cvRun)$("#cv_b").textContent=n?"Chercher les couvertures manquantes ("+n+")":"Chercher les couvertures manquantes"}
 $("#cv_x").onclick=()=>{cvRun=false};
+$("#cv_d").onclick=()=>{
+  const L=[...mine,...fam.filter(b=>b.by===uid)].filter(b=>!b.img),out=$("#cv_l");
+  if(!L.length){out.textContent="Tous tes livres ont une couverture 🎉";return}
+  const why=b=>{const i=String(b.isbn||"").replace(/[^0-9Xx]/g,"");
+    if(!i)return["Pas d’ISBN","Scanne le code-barres ou saisis l’ISBN (ou ajoute une photo)."];
+    if(!isbnOk(i))return["ISBN invalide","La clé de contrôle est fausse : faute de frappe ou mauvais ISBN. Corrige-le."];
+    if(/^979/.test(i))return["ISBN 979","Amazon ne gère pas les ISBN 979 ; autres sources sans résultat."];
+    if(cvTried.has(b.id))return["Introuvable","Aucune source n’a cette couverture : ajoute la photo à la main."];
+    return["Pas encore essayé","Clique sur « Chercher les couvertures manquantes »."]};
+  const rows=L.map(b=>({b,w:why(b)})).sort((x,y)=>x.w[0].localeCompare(y.w[0])||String(x.b.title).localeCompare(String(y.b.title),"fr"));
+  out.innerHTML="<b>"+L.length+" livre(s) sans couverture</b><br>"+rows.map(r=>"• "+esc(r.b.title)+" — <i>"+esc(r.b.isbn||"sans ISBN")+"</i> — <b>"+r.w[0]+"</b> : "+r.w[1]).join("<br>");
+};
 $("#cv_r").onclick=async()=>{
   const st=$("#cv_s");if(demo||cvRun)return;
   const L=[...mine,...fam.filter(b=>b.by===uid)].filter(b=>String(b.img||"").includes("/covers/"+uid+"/c-"));
