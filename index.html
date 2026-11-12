@@ -473,7 +473,7 @@ function isPh(bm){try{const W=20,H=30,c=document.createElement("canvas");c.width
   let R=0,G=0,B=0;for(let i=0;i<d.length;i+=4){R+=d[i];G+=d[i+1];B+=d[i+2]}R/=n;G/=n;B/=n;
   let v=0;const m=.3*R+.59*G+.11*B;for(let i=0;i<d.length;i+=4){const l=.3*d[i]+.59*d[i+1]+.11*d[i+2];v+=(l-m)*(l-m)}
   const sd=Math.sqrt(v/n),mx=Math.max(R,G,B),mn=Math.min(R,G,B),sat=mx?(mx-mn)/mx:0;
-  return sat<.22&&m>105&&m<205&&sd<24}catch(_){return false}}
+  return sat<.26&&m>100&&m<215&&sd<32}catch(_){return false}}
 const PXS=u=>"https://wsrv.nl/?url="+encodeURIComponent(u)+"&w=300&h=450&fit=inside&we&output=jpg&q=82";
 /* vraie couverture = image chargée, assez grande, et qui n'est pas la fausse image grise */
 async function imgReal(u){try{const r=await fetch(PXS(u));if(!r.ok)return false;const bl=await r.blob();if(!/image/.test(bl.type)||bl.size<2500)return false;const bm=await createImageBitmap(bl);return bm.width>=80&&bm.height>=100&&!isPh(bm)}catch(_){return imgOk(u)}}
@@ -982,6 +982,21 @@ $("#cv_b").onclick=async()=>{
       await load();st.textContent=L.length+" fausse(s) image(s) « non disponible » supprimée(s). Recherche des vraies couvertures…";
     }
   }catch(_){}
+  try{/* cherche les fausses images grises déjà enregistrées (même de tailles différentes) */
+    const L=[...mine,...fam.filter(b=>b.by===uid)].filter(b=>String(b.img||"").includes("/covers/"+uid+"/c-")),bad=[];let k=0,n=0;
+    if(L.length){
+      st.textContent="Vérification de "+L.length+" couverture(s) enregistrée(s)…";
+      const w=async()=>{while(k<L.length){const b=L[k++];try{const r=await fetch(b.img,{cache:"no-store"});if(r.ok){const bm=await createImageBitmap(await r.blob());if(isPh(bm))bad.push(b)}}catch(_){}n++;if(n%10===0)st.textContent="Vérification des couvertures… "+n+" / "+L.length}};
+      await Promise.all([w(),w(),w(),w(),w()]);
+      if(bad.length){
+        for(let j=0;j<bad.length;j+=60)await ok(sb.from("books").update({img:""}).in("id",bad.slice(j,j+60).map(b=>b.id)));
+        const names=bad.map(b=>decodeURIComponent(String(b.img).split("/object/public/covers/")[1]||"")).filter(Boolean);
+        for(let j=0;j<names.length;j+=100)try{await sb.storage.from("covers").remove(names.slice(j,j+100))}catch(_){}
+        cvTried=new Set();try{localStorage.removeItem("booky-cvtried")}catch(_){}
+        await load();st.textContent=bad.length+" fausse(s) image(s) grise(s) supprimée(s). Recherche des vraies couvertures…";
+      }
+    }
+  }catch(_){}
   $("#cv_b").disabled=false;
   let todo=cvCands().filter(b=>!cvTried.has(b.id));
   if(!todo.length){const all=cvCands();if(all.length&&confirm("Réessayer les "+all.length+" couvertures introuvables ?")){cvTried=new Set();todo=all}else{st.textContent="Toutes les couvertures possibles sont déjà enregistrées.";return}}
@@ -991,7 +1006,7 @@ $("#cv_b").onclick=async()=>{
       const b=todo[idx++];if(!b)return;
       try{
         const bl=await fetchCover(b);
-        if(bl){const url=await upImg(bl,"c-"+b.id+".jpg");await sbw(d=>sb.from("books").update(d).eq("id",b.id),{img:url});b.img=url;okn++}
+        if(bl){const url=await upImg(bl,"c-"+b.id+"-"+Date.now().toString(36)+".jpg");await sbw(d=>sb.from("books").update(d).eq("id",b.id),{img:url});b.img=url;okn++}
         else{fail++;cvTried.add(b.id);if(b._ph){try{await sbw(d=>sb.from("books").update(d).eq("id",b.id),{img:""});b.img=""}catch(_){}}}
       }catch(err){
         if(/bucket|row-level|policy|not found|Unauthorized/i.test((err&&err.message)||"")){fatal=true;why="Il faut d’abord lancer le SQL des photos dans Supabase (voir le guide).";picSqlMsg()}
