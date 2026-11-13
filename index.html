@@ -259,7 +259,7 @@ input[type=checkbox]{width:auto;padding:0}
 <dialog id="cam"><h2 style="margin:0 0 8px">Scanner le code-barres</h2>
 <div class="camv"><video id="camvid" playsinline muted autoplay></video><div class="camline"></div></div>
 <div id="camst" class="mu" style="margin-top:8px"></div>
-<div class="foot"><button class="btn ghost" id="camx" type="button">Annuler</button></div></dialog>
+<div class="foot"><button class="btn ghost" id="camx" type="button">Annuler</button><button class="btn ghost" id="camph" type="button">📷 Photo du code-barres</button></div></dialog>
 
 <div id="auth" hidden><div class="authbox"><h1>BOO<span>K</span>Y</h1>
 <input id="a_n" placeholder="Prénom (pour créer un compte)"><input id="a_e" type="email" placeholder="E-mail" autocomplete="email"><input id="a_p" type="password" placeholder="Mot de passe (6 caractères min.)" autocomplete="current-password">
@@ -309,8 +309,9 @@ async function load(){
 async function start(session){
   $("#auth").hidden=!!session;
   if(!session){db=false;uid=null;mine=[];fam=[];me={can:false,admin:false};try{Object.keys(localStorage).filter(k=>k.startsWith("booky-c-")).forEach(k=>localStorage.removeItem(k))}catch(_){}render();return}
+  const already=db&&uid===session.user.id&&(mine.length||fam.length);
   uid=session.user.id;db=true;
-  if(!demo)try{const c=JSON.parse(localStorage.getItem("booky-c-"+uid)||"null");if(c&&c.all){Object.assign(names,c.names||{});me=c.me||me;mine=c.all.filter(r=>!r.shared);fam=c.all.filter(r=>r.shared);render()}}catch(_){}
+  if(!demo&&!already)try{const c=JSON.parse(localStorage.getItem("booky-c-"+uid)||"null");if(c&&c.all){Object.assign(names,c.names||{});me=c.me||me;mine=c.all.filter(r=>!r.shared);fam=c.all.filter(r=>r.shared);render()}}catch(_){}
   await load();$("#s_n").value=names[uid]||(demo?"Moi":"");if(!demo)$("#acc").textContent=session.user.email||"";
 }
 async function auth(up){
@@ -361,7 +362,8 @@ function init(){
   if(!window.supabase||SUPABASE_URL.includes("VOTRE")||!SUPABASE_KEY){$("#auth").hidden=false;return}
   sb=realSb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
   sb.rpc("signups_open").then(r=>{if(r.data===false){$("#a_up").hidden=true;$("#a_n").hidden=true;$("#a_m").textContent="Les inscriptions sont fermées."}});
-  sb.auth.onAuthStateChange((ev,ses)=>{if(!demo)setTimeout(()=>start(ses),0)});
+  /* au retour dans l'appli, Supabase renvoie un évènement de connexion : si on est déjà connecté on ne relance rien (sinon la liste repart en haut) */
+  sb.auth.onAuthStateChange((ev,ses)=>{if(demo)return;if(ses&&db&&uid&&ses.user&&ses.user.id===uid&&ev!=="USER_UPDATED")return;setTimeout(()=>start(ses),0)});
 }
 
 const CATS={poche:"Livre de poche",grand:"Grand format",ancien:"Ancien livre",bd:"Bande dessinée"};
@@ -469,6 +471,7 @@ function shrink(f,mx,my){return new Promise((ok,ko)=>{const im=new Image(),u=URL
 $("#scanbtn").onclick=()=>$("#file").click();
 $("#pastebtn").onclick=async()=>{const bl=await clipImage();if(!bl)return;try{curImg=(await shrink(bl)).url;showPv();say("Image collée comme jaquette.")}catch(_){say("Image illisible.")}};
 $("#codebtn").onclick=()=>startCam();
+$("#camph").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam();$("#file2").click()};
 $("#camx").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam()};
 $("#cam").onclose=()=>stopCam();
 const say=m=>$("#scst").textContent=m;
@@ -574,7 +577,7 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.synopsis||$("#f_y").value?"":" (synopsis introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v10 · 13/11/2026";
+const APP_VERSION="v12 · 13/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const CATOK=["poche","grand","ancien","bd"];let memCat="";
 const lastCat=()=>{
@@ -598,7 +601,7 @@ function stopCam(){
 }
 let camLast="",camCnt=0,camT=0;
 /* un code n'est accepté que s'il est lu 2 fois de suite : évite les fausses lectures qui passent la clé de contrôle */
-function camVote(c){const n=Date.now();if(c===camLast&&n-camT<2500)camCnt++;else{camLast=c;camCnt=1}camT=n;
+function camVote(c){const n=Date.now();if(c===camLast&&n-camT<9000)camCnt++;else{camLast=c;camCnt=1}camT=n;
   if(camCnt>=2)camFound(c);else{const st=$("#camst");if(st)st.textContent="Code lu : "+c+" — confirmation… garde le code-barres bien en face."}}
 function camFound(c){
   if(camDone)return;camDone=true;
@@ -610,7 +613,7 @@ async function startCam(){
   const st=$("#camst"),v=$("#camvid");camDone=false;camBusy=false;camLast="";camCnt=0;
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say("Caméra indisponible ici : prends une photo du code-barres.");$("#file2").click();return}
   $("#cam").showModal();st.textContent="Démarrage de la caméra…";
-  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false})}
+  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:"BarcodeDetector" in window?1920:1280},height:{ideal:"BarcodeDetector" in window?1080:720}},audio:false})}
   catch(e){if($("#cam").open)$("#cam").close();say("Accès à la caméra refusé : autorise-la dans les réglages du navigateur, ou prends une photo du code-barres.");$("#file2").click();return}
   v.srcObject=camStream;try{await v.play()}catch(_){}
   try{const tr=camStream.getVideoTracks()[0],cp=tr.getCapabilities?tr.getCapabilities():{},adv=[];if(cp.focusMode&&cp.focusMode.includes("continuous"))adv.push({focusMode:"continuous"});if(adv.length)await tr.applyConstraints({advanced:adv})}catch(_){}
