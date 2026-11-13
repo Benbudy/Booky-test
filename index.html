@@ -239,7 +239,7 @@ input[type=checkbox]{width:auto;padding:0}
 
 <dialog id="dlg">
   <h2 id="dt" style="margin:0 0 4px">Nouveau livre</h2>
-  <div class="scan"><div id="pv"></div><div><button class="btn sm" id="codebtn" type="button">📷 Scanner avec la caméra</button> <button class="btn ghost sm" id="scanbtn" type="button">Photo de la couverture</button> <button class="btn ghost sm" id="pastebtn" type="button">📋 Coller une image</button><div id="scst"></div></div></div>
+  <div class="scan"><div id="pv"></div><div><button class="btn sm" id="codebtn" type="button">📷 Scanner avec la caméra</button> <button class="btn ghost sm" id="scanbtn" type="button">Photo de la couverture</button> <button class="btn ghost sm" id="pastebtn" type="button">📋 Coller une image</button> <button class="btn sm" id="batchbtn" type="button">⚡ Scan en rafale</button><div id="scst"></div></div></div>
   <label>ISBN</label><div class="row"><input id="f_i" inputmode="numeric" maxlength="20" placeholder="978…"><button class="btn ghost sm" id="lookup" type="button" style="flex:none">Chercher</button></div>
   <input type="file" id="file" accept="image/*" hidden>
   <input type="file" id="file2" accept="image/*" hidden>
@@ -263,7 +263,7 @@ input[type=checkbox]{width:auto;padding:0}
 <input type="file" id="pf" accept="image/*" multiple hidden>
 <dialog id="cam"><h2 style="margin:0 0 8px">Scanner le code-barres</h2>
 <div class="camv"><video id="camvid" playsinline muted autoplay></video><div class="camline"></div></div>
-<div id="camst" class="mu" style="margin-top:8px"></div>
+<div id="camst" class="mu" style="margin-top:8px;white-space:pre-line"></div>
 <div class="foot"><button class="btn ghost" id="camx" type="button">Annuler</button><button class="btn ghost" id="camph" type="button">📷 Photo du code-barres</button></div></dialog>
 
 <div id="auth" hidden><div class="authbox"><h1>BOO<span>K</span>Y</h1>
@@ -475,10 +475,11 @@ function showPv(){$("#pv").innerHTML=curImg?`<img class="cov" alt="" src="${esc(
 function shrink(f,mx,my){return new Promise((ok,ko)=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const r=Math.min(1,(mx||300)/im.width,(my||440)/im.height),c=document.createElement("canvas");c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(bl=>{const fr=new FileReader();fr.onload=()=>ok({url:fr.result,blob:bl});fr.readAsDataURL(bl)},"image/jpeg",.72)};im.onerror=ko;im.src=u})}
 $("#scanbtn").onclick=()=>$("#file").click();
 $("#pastebtn").onclick=async()=>{const bl=await clipImage();if(!bl)return;try{curImg=(await shrink(bl)).url;showPv();say("Image collée comme jaquette.")}catch(_){say("Image illisible.")}};
-$("#codebtn").onclick=()=>startCam();
+$("#codebtn").onclick=()=>{batch=false;startCam()};
+$("#batchbtn").onclick=()=>{if(editing)return;if(!confirm("Scan en rafale : chaque code-barres scanné ajoute directement le livre (catégorie, statut et destination choisis ci-dessus), sans fiche à valider. Touche « Terminer » à la fin. Continuer ?"))return;batch=true;batchQ=[];batchSeen=new Set();batchStat={ok:0,dup:0,miss:[]};batchDone=[];saveCat($("#f_c").value);$("#camx").textContent="Terminer";startCam()};
 $("#camph").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam();$("#file2").click()};
 $("#camx").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam()};
-$("#cam").onclose=()=>stopCam();
+$("#cam").onclose=()=>{stopCam();if(batch)finishBatch()};
 const say=m=>$("#scst").textContent=m;
 const imgOk=u=>new Promise(r=>{const i=new Image();i.onload=()=>r(i.width>1);i.onerror=()=>r(false);i.src=u});
 /* Détecte la fausse image grise « image non disponible » de Google (gris-bleu uni, quasi sans contraste) */
@@ -522,6 +523,13 @@ const gimg=v=>((v.imageLinks&&(v.imageLinks.thumbnail||v.imageLinks.smallThumbna
 const cm=s=>{const m=String(s||"").match(/[\d.,]+/g);if(!m)return 0;const n=m.slice(0,2).map(x=>parseFloat(x.replace(",","."))||0),h=Math.max(...n);return /in/i.test(s)?h*2.54:h};
 function gmap(v){const ids=v.industryIdentifiers||[],m={title:(v.title||"")+(v.subtitle?" : "+v.subtitle:""),author:(v.authors||[]).join(", "),img:gimg(v),synopsis:strip(v.description),isbn:((ids.find(x=>x.type==="ISBN_13")||ids[0]||{}).identifier)||"",publisher:v.publisher||"",year:parseInt(v.publishedDate)||0,pages:v.pageCount||0,cats:(v.categories||[]).join(" "),height:cm((v.dimensions||{}).height)};m.cat=guessCat(m);return m}
 try{localStorage.removeItem("booky-gkey")}catch(_){}
+/* synopsis en anglais ? (on veut du français) */
+function isEn(t){t=String(t||"");const en=(t.match(/\b(the|and|of|is|with|his|her|their|they|who|when|which|from|that|this|are|was|has|have|will)\b/gi)||[]).length,fr=(t.match(/\b(le|la|les|des|et|un|une|du|est|dans|pour|qui|que|sur|avec|son|sa|ses|au|aux|par|il|elle|ils)\b/gi)||[]).length;return en>=4&&en>fr*1.5}
+/* « Aslak - Tome 2 - Le mât », « Aslak T.2 » -> série Aslak, tome 2, titre « Aslak T2 - Le mât du milieu » */
+function splitSeries(t){t=String(t||"").trim();
+  const m=t.match(/^(.+?)(?:\s+|\s*[,:–-]\s*)(?:tome|t\.?|vol(?:ume)?\.?|n[°o]\.?|#)\s*0*(\d{1,3})\b\s*(?:[-–:,.]\s*)?(.*)$/i);
+  if(!m)return null;const ser=m[1].replace(/[\s,:–-]+$/,"").trim();if(ser.length<2)return null;
+  const rest=m[3].trim();return{series:ser,tome:parseInt(m[2],10),title:ser+" T"+parseInt(m[2],10)+(rest?" - "+rest:"")}}
 async function gbooks(q,n){const j=await jget("https://www.googleapis.com/books/v1/volumes?maxResults="+(n||6)+"&q="+q);return((j&&j.items)||[]).map(i=>gmap(i.volumeInfo||{}))}
 async function gbook(q){const a=await gbooks(q,6);if(!a.length)return null;const r={...a[0]};if(!r.synopsis){const s=a.find(x=>x.synopsis&&simT(x.title,r.title));if(s)r.synopsis=s.synopsis}return r}
 const descOf=d=>!d?"":typeof d==="string"?d:d.value||"";
@@ -557,9 +565,10 @@ async function findInfo({isbn,title,author,light}){
   else if(isbn)[g,o,od]=await Promise.all([gbook("isbn:"+isbn),olIsbn(isbn),olData(isbn)]);
   if(!g&&(title||(od&&od.title)))g=await gbook("intitle:"+enc(title||od.title)+((author||(od&&od.author))?"+inauthor:"+enc(author||od.author):""));
   const t=(g&&g.title)||(od&&od.title)||title||"",a=(g&&g.author)||(od&&od.author)||author||"";
-  let syn=(g&&g.synopsis)||(o&&o.synopsis)||"";
-  if(!syn&&t&&!light){const l=await gbooks("intitle:"+enc(t)+(a?"+inauthor:"+enc(a):""),8);const x=l.find(x=>x.synopsis&&simT(x.title,t));if(x)syn=x.synopsis}
-  if(!syn&&t&&!light)syn=await olSyn(t,a);
+  const fr=x=>x&&!isEn(x)?x:"";
+  let syn=fr(g&&g.synopsis)||fr(o&&o.synopsis)||"";
+  if(!syn&&t&&!light){const l=await gbooks("intitle:"+enc(t)+(a?"+inauthor:"+enc(a):"")+"&langRestrict=fr",8);const x=l.find(x=>fr(x.synopsis)&&simT(x.title,t));if(x)syn=x.synopsis}
+  if(!syn&&t&&!light)syn=fr(await olSyn(t,a));
   let img=(g&&g.img)||"";
   if(img&&!(await imgReal(img)))img=""
   if(!img&&isbn){
@@ -571,20 +580,21 @@ async function findInfo({isbn,title,author,light}){
   if(!img&&t){/* ISBN inconnu des bases : on cherche par titre/auteur (fréquent pour les BD) */
     const l=await gbooks("intitle:"+enc(t)+(a?"+inauthor:"+enc(a):""),6);const x=l.find(x=>x.img&&simT(x.title,t));if(x&&await imgReal(x.img))img=x.img}
   const meta={publisher:[g&&g.publisher,o&&o.publisher,od&&od.publisher].filter(Boolean).join(" "),year:(g&&g.year)||(o&&o.year)||(od&&od.year)||0,cats:g&&g.cats,subjects:od&&od.subjects,format:o&&o.format,height:(g&&g.height)||(o&&o.height)||0};
-  return{title:t,author:a,synopsis:syn,img,isbn:(g&&g.isbn)||isbn||"",cat:guessCat(meta),found:!!(g||o||od)};
+  const sp=splitSeries(t);
+  return{title:sp?sp.title:t,series:sp?sp.series:null,tome:sp?sp.tome:null,author:a,synopsis:syn,img,isbn:(g&&g.isbn)||isbn||"",cat:guessCat(meta),found:!!(g||o||od)};
 }
 async function lookup(isbn){
   isbn=String(isbn).replace(/[^0-9Xx]/g,"");if(!isbn){say("Saisis ou scanne un ISBN.");return}
   $("#f_i").value=isbn;say("Recherche du livre…");
   const r=await findInfo({isbn});
-  if(r.title){$("#f_t").value=r.title.slice(0,120);$("#f_a").value=(r.author||"").slice(0,80)}
+  if(r.title){$("#f_t").value=r.title.slice(0,120);$("#f_a").value=(r.author||"").slice(0,80);if(r.series&&!$("#f_se").value){$("#f_se").value=r.series;$("#f_to").value=r.tome}}
   if(r.synopsis&&!$("#f_y").value)$("#f_y").value=r.synopsis;
   if(r.img&&!curImg){curImg=r.img;showPv()}
   
-  say(r.title?"Livre trouvé"+(r.synopsis||$("#f_y").value?"":" (synopsis introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
+  say(r.title?"Livre trouvé"+(r.series?" · "+r.series+" tome "+r.tome:"")+(r.synopsis||$("#f_y").value?"":" (synopsis en français introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v14 · 13/11/2026";
+const APP_VERSION="v15 · 13/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const CATOK=["poche","grand","ancien","bd"];let memCat="";
 const lastCat=()=>{
@@ -668,10 +678,41 @@ function grayOf(src,sw,sh,maxW,rot){
   const d=x.getImageData(0,0,c.width,c.height).data,g=new Uint8Array(c.width*c.height);
   for(let i=0,j=0;i<d.length;i+=4,j++)g[j]=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;
   return{g,w:c.width,h:c.height}}
+/* ===== scan en rafale : on scanne à la suite, chaque livre est ajouté tout seul ===== */
+let batch=false,batchQ=[],batchRun=0,batchSeen=new Set(),batchStat={ok:0,dup:0,miss:[]};
+const batchLine=()=>"⚡ "+batchStat.ok+" ajouté(s) · "+batchStat.dup+" déjà présent(s)"+(batchStat.miss.length?" · "+batchStat.miss.length+" introuvable(s)":"")+(batchRun||batchQ.length?" · "+(batchRun+batchQ.length)+" en cours…":"");
+async function batchAdd(isbn){
+  batchRun++;
+  try{
+    const known=[...mine,...fam].find(b=>String(b.isbn||"").replace(/[^0-9Xx]/g,"")===isbn);
+    if(known){batchStat.dup++;return}
+    const r=await findInfo({isbn});
+    if(!r.title){batchStat.miss.push(isbn);return}
+    const data={title:r.title.slice(0,120),author:(r.author||"").slice(0,80),status:$("#f_s").value||"alire",rating:0,color:COLORS[Math.floor(Math.random()*COLORS.length)],cat:$("#f_c").value,img:r.img||"",isbn:r.isbn||isbn,synopsis:r.synopsis||""};
+    if(r.series){data.series=r.series;data.tome=r.tome}
+    await sbw(d=>sb.from("books").insert(d),{...data,shared:$("#f_w").value==="fam"});
+    batchStat.ok++;batchDone=(batchDone||[]);batchDone.push(data.title)
+  }catch(_){batchStat.miss.push(isbn)}
+  finally{batchRun--}
+}
+let batchDone=[];
+function batchPump(){while(batchRun<3&&batchQ.length){batchAdd(batchQ.shift()).then(()=>{const st=$("#camst");if(st&&batch)st.textContent=batchLine()+(batchDone.length?"\nDernier : "+batchDone[batchDone.length-1]:"");batchPump()})}}
+function batchTake(c){
+  if(batchSeen.has(c))return;batchSeen.add(c);try{navigator.vibrate&&navigator.vibrate(40)}catch(_){}
+  batchQ.push(c);const st=$("#camst");if(st)st.textContent="✓ "+c+" scanné — suivant !\n"+batchLine();batchPump()}
+async function finishBatch(){
+  batch=false;$("#camx").textContent="Annuler";
+  say("Ajout des derniers livres…");
+  for(let i=0;i<300&&(batchRun||batchQ.length);i++)await new Promise(r=>setTimeout(r,200));
+  const n=batchStat.ok,miss=batchStat.miss.slice();
+  if($("#dlg").open)$("#dlg").close();
+  try{await load()}catch(_){}
+  alert(n+" livre(s) ajouté(s), "+batchStat.dup+" déjà présent(s)."+(miss.length?"\n\nIntrouvables (à ajouter à la main) :\n"+miss.join("\n"):""));
+}
 let camLast="",camCnt=0,camT=0;
 /* un code n'est accepté que s'il est lu 2 fois de suite : évite les fausses lectures qui passent la clé de contrôle */
 function camVote(c){const n=Date.now();if(c===camLast&&n-camT<9000)camCnt++;else{camLast=c;camCnt=1}camT=n;
-  if(camCnt>=2)camFound(c);else{const st=$("#camst");if(st)st.textContent="Code lu : "+c+" — confirmation… garde le code-barres bien en face."}}
+  if(camCnt>=2){if(batch){camCnt=0;camLast="";batchTake(c)}else camFound(c)}else{const st=$("#camst");if(st)st.textContent="Code lu : "+c+" — confirmation… garde le code-barres bien en face."}}
 function camFound(c){
   if(camDone)return;camDone=true;
   try{navigator.vibrate&&navigator.vibrate(60)}catch(_){}
@@ -680,10 +721,10 @@ function camFound(c){
 }
 async function startCam(){
   const st=$("#camst"),v=$("#camvid");camDone=false;camBusy=false;camLast="";camCnt=0;
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say("Caméra indisponible ici : prends une photo du code-barres.");$("#file2").click();return}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say("Caméra indisponible ici : prends une photo du code-barres.");batch=false;$("#camx").textContent="Annuler";$("#file2").click();return}
   $("#cam").showModal();st.textContent="Démarrage de la caméra…";
   try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:"BarcodeDetector" in window?1920:1280},height:{ideal:"BarcodeDetector" in window?1080:720}},audio:false})}
-  catch(e){if($("#cam").open)$("#cam").close();say("Accès à la caméra refusé : autorise-la dans les réglages du navigateur, ou prends une photo du code-barres.");$("#file2").click();return}
+  catch(e){if($("#cam").open)$("#cam").close();say("Accès à la caméra refusé : autorise-la dans les réglages du navigateur, ou prends une photo du code-barres.");batch=false;$("#camx").textContent="Annuler";$("#file2").click();return}
   v.srcObject=camStream;try{await v.play()}catch(_){}
   try{const tr=camStream.getVideoTracks()[0],cp=tr.getCapabilities?tr.getCapabilities():{},adv=[];if(cp.focusMode&&cp.focusMode.includes("continuous"))adv.push({focusMode:"continuous"});if(adv.length)await tr.applyConstraints({advanced:adv})}catch(_){}
   let badSeen="",frames=0,engine="";
@@ -708,7 +749,7 @@ async function startCam(){
       if(!found&&v.videoWidth){const f=grayOf(v,v.videoWidth,v.videoHeight,1280,0),c=eanFromGray(f.g,f.w,f.h);if(c)onCode(c)}
     }catch(e){frames++}
     camBusy=false;
-    if(!camDone&&!camLast&&!badSeen&&frames>0&&frames%8===0)show("Lecture en cours ("+engine+", "+frames+" images analysées)… rapproche ou éloigne un peu le code-barres, bien droit et éclairé.");
+    if(!camDone&&!camLast&&(batch||!badSeen)&&frames>0&&frames%8===0)show(batch?batchLine()+"\nScanne le livre suivant…":"Lecture en cours ("+engine+", "+frames+" images analysées)… rapproche ou éloigne un peu le code-barres, bien droit et éclairé.");
   },300);
 }
 function renderStats(){
