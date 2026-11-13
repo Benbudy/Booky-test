@@ -497,6 +497,8 @@ function loadZX(){return window.ZXing?Promise.resolve():new Promise((ok,ko)=>{co
 async function readCode(f){
   let other="";const take=v=>{v=String(v||"").trim();if(isbnOk(v))return v;if(/^\d{13}$/.test(v)&&!other)other=v;return ""};
   try{if("BarcodeDetector" in window){const r=await new BarcodeDetector({formats:["ean_13","ean_8"]}).detect(await createImageBitmap(f));for(const x of r){const c=take(x.rawValue);if(c)return c}}}catch(_){}
+  try{const bm=await createImageBitmap(f);
+    for(const mw of [1600,1000,2400])for(const rot of [0,90,270,180]){const q=grayOf(bm,bm.width,bm.height,mw,rot),c=eanFromGray(q.g,q.w,q.h);if(c&&isbnOk(c))return c}}catch(_){}
   try{
     await loadZX();
     const h=new Map();h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13]);h.set(ZXing.DecodeHintType.TRY_HARDER,true);
@@ -582,7 +584,7 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.synopsis||$("#f_y").value?"":" (synopsis introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v13 · 13/11/2026";
+const APP_VERSION="v14 · 13/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const CATOK=["poche","grand","ancien","bd"];let memCat="";
 const lastCat=()=>{
@@ -604,6 +606,68 @@ function stopCam(){
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null}
   const v=$("#camvid");if(v)v.srcObject=null;
 }
+/* Décodeur EAN-13 maison (lignes de pixels en niveaux de gris) */
+const EAN_L=["3211","2221","2122","1411","1132","1231","1114","1312","1213","3112"].map(s=>[...s].map(Number));
+const EAN_G=EAN_L.map(a=>[...a].reverse());
+const EAN_PAR=["LLLLLL","LLGLGG","LLGGLG","LLGGGL","LGLLGG","LGGLLG","LGGGLL","LGLGLG","LGLGGL","LGGLGL"];
+function eanDigit(w,tabs){
+  const T=w[0]+w[1]+w[2]+w[3];if(T<=0)return null;const k=7/T;let best=null,be=1e9;
+  for(const [name,tab] of tabs)for(let d=0;d<10;d++){let e=0;for(let i=0;i<4;i++){const x=w[i]*k-tab[d][i];e+=x*x}if(e<be){be=e;best={d,name}}}
+  return be<0.7?best:null;
+}
+function eanFromRuns(r){ /* r : largeurs alternées, r[0] = barre noire */
+  for(let i=0;i+59<=r.length;i+=2){
+    const m=(r[i]+r[i+1]+r[i+2])/3;if(m<1)continue;
+    if(Math.abs(r[i]-m)>m*.6||Math.abs(r[i+1]-m)>m*.6||Math.abs(r[i+2]-m)>m*.6)continue;
+    let p=i+3,code="",par="";let ok=true;
+    for(let k=0;k<6;k++){const g=eanDigit(r.slice(p,p+4),[["L",EAN_L],["G",EAN_G]]);if(!g){ok=false;break}code+=g.d;par+=g.name;p+=4}
+    if(!ok)continue;
+    const f=EAN_PAR.indexOf(par);if(f<0)continue;
+    for(let q=0;q<5;q++){const x=r[p+q]/m;if(x<.4||x>1.9){ok=false;break}}
+    if(!ok)continue;p+=5;
+    let right="";
+    for(let k=0;k<6;k++){const g=eanDigit(r.slice(p,p+4),[["R",EAN_L]]);if(!g){ok=false;break}right+=g.d;p+=4}
+    if(!ok)continue;
+    const full=String(f)+code+right;
+    let t=0;for(let q=0;q<12;q++)t+=+full[q]*(q%2?3:1);
+    if((10-t%10)%10!==+full[12])continue;
+    return full;
+  }
+  return null;
+}
+function eanFromRow(lum,n){
+  /* seuil local : moyenne glissante sur ~1/6 de la largeur */
+  const W=Math.max(40,(n/6)|0),pre=new Float64Array(n+1);for(let i=0;i<n;i++)pre[i+1]=pre[i]+lum[i];
+  const bin=new Uint8Array(n);
+  for(let i=0;i<n;i++){const a=Math.max(0,i-W),b=Math.min(n,i+W),mean=(pre[b]-pre[a])/(b-a);bin[i]=lum[i]<mean*.93?1:0}
+  const runs=[];let cur=bin[0],len=0,first=cur;
+  for(let i=0;i<n;i++){if(bin[i]===cur)len++;else{runs.push(len);cur=bin[i];len=1}}
+  runs.push(len);
+  const out=first===1?runs:runs.slice(1); /* on commence à la 1re barre noire */
+  const a=eanFromRuns(out);if(a)return a;
+  return eanFromRuns(out.slice().reverse());
+}
+function eanFromGray(g,w,h){
+  /* g : niveaux de gris w*h. On teste des lignes réparties sur toute l'image, moyennées sur 3 lignes. */
+  const rows=36,row=new Float64Array(w);
+  for(let s=0;s<rows;s++){
+    const y=Math.round(h*(.1+.8*(s+.5)/rows));
+    for(let x=0;x<w;x++){let t=0,c=0;for(let dy=-1;dy<=1;dy++){const yy=y+dy;if(yy>=0&&yy<h){t+=g[yy*w+x];c++}}row[x]=t/c}
+    /* léger lissage horizontal */
+    const sm=new Float64Array(w);for(let x=0;x<w;x++){const a=row[Math.max(0,x-1)],b=row[x],c=row[Math.min(w-1,x+1)];sm[x]=(a+2*b+c)/4}
+    const r=eanFromRow(sm,w);if(r)return r;
+  }
+  return null;
+}
+
+/* niveaux de gris d'un canvas / d'une image, pour le lecteur maison */
+function grayOf(src,sw,sh,maxW,rot){
+  const sc=Math.min(1,maxW/Math.max(sw,sh)),w=Math.round(sw*sc),h=Math.round(sh*sc),c=document.createElement("canvas");
+  const r90=rot===90||rot===270;c.width=r90?h:w;c.height=r90?w:h;const x=c.getContext("2d",{willReadFrequently:true});
+  x.translate(c.width/2,c.height/2);x.rotate(rot*Math.PI/180);x.drawImage(src,-w/2,-h/2,w,h);
+  const d=x.getImageData(0,0,c.width,c.height).data,g=new Uint8Array(c.width*c.height);
+  for(let i=0,j=0;i<d.length;i+=4,j++)g[j]=(d[i]*77+d[i+1]*150+d[i+2]*29)>>8;
+  return{g,w:c.width,h:c.height}}
 let camLast="",camCnt=0,camT=0;
 /* un code n'est accepté que s'il est lu 2 fois de suite : évite les fausses lectures qui passent la clé de contrôle */
 function camVote(c){const n=Date.now();if(c===camLast&&n-camT<9000)camCnt++;else{camLast=c;camCnt=1}camT=n;
@@ -625,12 +689,9 @@ async function startCam(){
   let badSeen="",frames=0,engine="";
   const t0=Date.now();
   const show=m=>{if(!camDone&&st)st.textContent=m};
-  let det=null,zx=null;
-  if("BarcodeDetector" in window){try{det=new BarcodeDetector({formats:["ean_13","ean_8","upc_a"]});engine="natif"}catch(_){try{det=new BarcodeDetector();engine="natif"}catch(__){det=null}}}
-  if(!det){
-    try{await loadZX();const h=new Map();h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8]);h.set(ZXing.DecodeHintType.TRY_HARDER,true);zx=new ZXing.BrowserMultiFormatReader(h);engine="zxing"}
-    catch(_){st.textContent="Lecture automatique indisponible (bibliothèque non chargée). Utilise « Photo du code-barres » ou saisis l’ISBN.";return}
-  }
+  let det=null;
+  if("BarcodeDetector" in window){try{det=new BarcodeDetector({formats:["ean_13","ean_8","upc_a"]});engine="natif+maison"}catch(_){try{det=new BarcodeDetector();engine="natif+maison"}catch(__){det=null}}}
+  if(!det)engine="maison";
   show("Place le code-barres du livre dans le cadre, bien éclairé.");
   const onCode=raw=>{
     const c=String(raw||"").replace(/[^0-9Xx]/g,"");
@@ -642,8 +703,9 @@ async function startCam(){
     if(v.readyState<2){if(Date.now()-t0>6000)show("La caméra ne fournit pas d’image. Ferme et utilise « Photo du code-barres ».");return}
     camBusy=true;
     try{
-      if(det){const r=await det.detect(v);frames++;r.forEach(x=>onCode(x.rawValue))}
-      else{try{const r=zx.decode(v);frames++;onCode(r.getText())}catch(e){frames++}}
+      frames++;let found=false;
+      if(det){try{const r=await det.detect(v);r.forEach(x=>{onCode(x.rawValue);found=true})}catch(_){}}
+      if(!found&&v.videoWidth){const f=grayOf(v,v.videoWidth,v.videoHeight,1280,0),c=eanFromGray(f.g,f.w,f.h);if(c)onCode(c)}
     }catch(e){frames++}
     camBusy=false;
     if(!camDone&&!camLast&&!badSeen&&frames>0&&frames%8===0)show("Lecture en cours ("+engine+", "+frames+" images analysées)… rapproche ou éloigne un peu le code-barres, bien droit et éclairé.");
