@@ -296,7 +296,7 @@ $("#theme").onchange=e=>{const v=e.target.value;if(v)document.documentElement.da
 let lastLoad=0;
 async function fetchBooks(){let all=[],from=0;for(;;){const r=await sb.from("books").select("*").order("created_at",{ascending:false}).order("id").range(from,from+999);if(r.error)return{error:r.error};all=all.concat(r.data);if(r.data.length<1000)break;from+=1000}return{data:all}}
 async function load(){
-  lastLoad=Date.now();
+  lastLoad=Date.now();const y0=scrollY;
   const [b,p]=await Promise.all([fetchBooks(),sb.from("profiles").select("id,name,can_share,is_admin")]);
   if(b.error){$("#msg").innerHTML='<div class="msg">Impossible de charger les livres.</div>';return}
   (p.data||[]).forEach(r=>names[r.id]=r.name||"Quelqu’un");
@@ -304,7 +304,7 @@ async function load(){
   const all=b.data.map(r=>({...r,by:r.owner,borrowedBy:r.borrowed_by,at:Date.parse(r.created_at)}));
   mine=all.filter(r=>!r.shared);fam=all.filter(r=>r.shared);
   if(!demo)try{localStorage.setItem("booky-c-"+uid,JSON.stringify({all,names,me}))}catch(_){}
-  $("#msg").innerHTML="";render();
+  $("#msg").innerHTML="";render();restoreScroll(y0);
 }
 async function start(session){
   $("#auth").hidden=!!session;
@@ -377,6 +377,8 @@ const lt=b=>{const k=lkey(b);return /[A-Z]/.test(k)?k:"#"};
 function buildIdx(L){const on=L.length&&(F.s==="title"||F.s==="author"||F.s==="series"),ix=$("#idx");ix.hidden=!on;if(!on)return;const have=new Set(L.map(lt));ix.innerHTML="ABCDEFGHIJKLMNOPQRSTUVWXYZ#".split("").map(c=>`<i data-k="${c}" class="${have.has(c)?"on":""}">${c}</i>`).join("");placeIdx()}
 function placeIdx(){const ix=$("#idx"),br=document.querySelector("#v-lib .bar");if(ix.hidden||!br)return;const b=br.getBoundingClientRect(),n=$("#nav").getBoundingClientRect();ix.style.top=Math.max(b.bottom+8,56)+"px";ix.style.bottom=(innerHeight-n.top+8)+"px"}
 addEventListener("scroll",()=>placeIdx(),{passive:true});addEventListener("resize",()=>placeIdx());
+/* après un rechargement (ex. changement de couverture), on revient exactement où on était dans la liste */
+function restoreScroll(y){if(!y)return;const el=$("#list");let g=0;while(el&&el._rest&&el._rest.length&&document.documentElement.scrollHeight<y+innerHeight+300&&g++<80)more(el);scrollTo(0,y)}
 function jump(k){const q='#list .tile[data-l="'+k+'"]';let t=document.querySelector(q);if(!t&&$("#list")._rest&&$("#list")._rest.length){more($("#list"),true);t=document.querySelector(q)}if(t)t.scrollIntoView({block:"start"})}
 const gcls=()=>"grid "+vm;
 const info=b=>vm==="list"?`<div class="ri"><b>${esc(b.title)}</b><span>${esc(b.author||"")}</span><small>${[ST[b.status],CATS[b.cat]].filter(Boolean).join(" · ")}</small></div>`:"";
@@ -460,7 +462,7 @@ function openDlg(b,w){
   $("#dlg").showModal();
 }
 let curImg="",catSel="",curIsbn="",catTouched=false,catAuto=false;
-$("#f_c").onchange=()=>{catTouched=true};
+$("#f_c").onchange=()=>{catTouched=true;if(!editing)saveCat($("#f_c").value)};
 
 function showPv(){$("#pv").innerHTML=curImg?`<img class="cov" alt="" src="${esc(curImg)}">`:""}
 function shrink(f,mx,my){return new Promise((ok,ko)=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const r=Math.min(1,(mx||300)/im.width,(my||440)/im.height),c=document.createElement("canvas");c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(bl=>{const fr=new FileReader();fr.onload=()=>ok({url:fr.result,blob:bl});fr.readAsDataURL(bl)},"image/jpeg",.72)};im.onerror=ko;im.src=u})}
@@ -572,9 +574,15 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.synopsis||$("#f_y").value?"":" (synopsis introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v9 · 13/11/2026";
+const APP_VERSION="v10 · 13/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
-const lastCat=()=>{try{const v=localStorage.getItem("booky-lastcat");return["poche","grand","ancien","bd"].includes(v)?v:"poche"}catch(_){return"poche"}};
+const CATOK=["poche","grand","ancien","bd"];let memCat="";
+const lastCat=()=>{
+  try{const v=localStorage.getItem("booky-lastcat");if(CATOK.includes(v))return v}catch(_){}
+  if(CATOK.includes(memCat))return memCat;
+  const n=[...mine,...fam].filter(b=>b.by===uid&&CATOK.includes(b.cat)).sort((a,b)=>(b.at||0)-(a.at||0))[0];/* à défaut : catégorie du dernier livre ajouté */
+  return n?n.cat:"poche"};
+const saveCat=c=>{if(!CATOK.includes(c))return;memCat=c;try{localStorage.setItem("booky-lastcat",c)}catch(_){}};
 const ISBNRE=/^(97[89]\d{10}|\d{9}[\dXx])$/;
 /* un code n'est accepté que si sa clé de contrôle est bonne : évite les fausses lectures de la caméra */
 function isbnOk(c){c=String(c||"").replace(/[^0-9Xx]/g,"");
@@ -703,7 +711,7 @@ $("#save").onclick=async()=>{
   {const old=editing&&[...mine,...fam].find(x=>x.id===editing.id),had=old&&(old.series||old.tome!=null);if(!had){if(data.series==null)delete data.series;if(data.tome==null)delete data.tome}}
   const needCat=false;
   if(!data.img||!data.synopsis||needCat){$("#save").disabled=true;try{const r=await findInfo({isbn:data.isbn,title,author:data.author});if(!data.img&&r.img)data.img=r.img;if(!data.synopsis)data.synopsis=r.synopsis;if(!data.isbn&&data.cat!=="ancien")data.isbn=r.isbn;if(needCat&&r.cat)data.cat=r.cat}catch(_){}}
-  if(!editing)try{localStorage.setItem("booky-lastcat",data.cat)}catch(_){}
+  if(!editing)saveCat(data.cat);
   try{
     if(editing)await sbw(d=>sb.from("books").update(d).eq("id",editing.id),data);
     else await sbw(d=>sb.from("books").insert(d),{...data,shared:$("#f_w").value==="fam"});
