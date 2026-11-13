@@ -227,6 +227,7 @@ input[type=checkbox]{width:auto;padding:0}
 <label class="lb">Note minimum</label><select id="x_r"><option value="0">Toutes</option><option value="3">3 / 5 et plus</option><option value="4">4 / 5 et plus</option><option value="5">5 / 5</option></select>
 <label class="lb">Disponibilité</label><select id="x_a"><option value="">Tous</option><option value="dispo">Disponibles</option><option value="emp">Empruntés</option></select>
 <label class="lb">Ajouté par</label><select id="x_b"><option value="">Tous</option><option value="moi">Moi</option><option value="autres">Les autres</option></select>
+<label class="lb">Couverture</label><select id="x_cv"><option value="">Toutes</option><option value="sans">Sans couverture seulement</option></select>
 <label class="lb">Trier par</label><select id="x_s"><option value="title">Titre</option><option value="author">Auteur</option><option value="recent">Plus récents</option><option value="rating">Mieux notés</option><option value="series">Par saga / série</option></select>
 <div class="foot"><button class="btn ghost" id="x_reset">Réinitialiser</button><button class="btn" id="x_ok">Appliquer</button></div></dialog>
 <dialog id="det"><div id="detc"></div><div class="foot"><button class="btn ghost" id="detx">Fermer</button></div></dialog>
@@ -417,7 +418,7 @@ function render(){
   $("#add").hidden=tab==="set"||tab==="adm"||(tab==="fam"&&!me.can);$("#idx").hidden=true;$("#vbtn").hidden=tab==="set"||tab==="adm";$("#list").className=gcls();
   if(tab==="fam"||tab==="me"){
     const q=$("#q").value.trim().toLowerCase(),ct=catSel,src=tab==="me"?mine:fam;
-    const L=src.filter(b=>(!F.st||b.status===F.st)&&(!ct||b.cat===ct)&&(!F.r||(b.rating||0)>=F.r)&&(!F.a||(F.a==="dispo"?!b.borrowedBy:!!b.borrowedBy))&&(!F.b||(F.b==="moi"?b.by===uid:b.by!==uid))&&match(b,q)).sort(sorter);
+    const L=src.filter(b=>(!F.st||b.status===F.st)&&(!ct||b.cat===ct)&&(!F.r||(b.rating||0)>=F.r)&&(!F.a||(F.a==="dispo"?!b.borrowedBy:!!b.borrowedBy))&&(!F.b||(F.b==="moi"?b.by===uid:b.by!==uid))&&(!F.cv||!b.img)&&match(b,q)).sort(sorter);
     curL=L;let D=L;
     if(F.s==="series"&&L.length){D=[];const g={};L.forEach(b=>{const k=skey(b);g[k]=(g[k]||0)+1});let last=null;L.forEach(b=>{const k=skey(b);if(k!==last){last=k;D.push({_h:b.series||"Sans série",n:g[k]})}D.push(b)})}
     setCards($("#list"),D,tab,src.length?"Aucun résultat.":(tab==="me"?"Ta bibliothèque privée est vide.":"La bibliothèque familiale est vide."));
@@ -571,7 +572,7 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.synopsis||$("#f_y").value?"":" (synopsis introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v8 · 12/11/2026";
+const APP_VERSION="v9 · 13/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const lastCat=()=>{try{const v=localStorage.getItem("booky-lastcat");return["poche","grand","ancien","bd"].includes(v)?v:"poche"}catch(_){return"poche"}};
 const ISBNRE=/^(97[89]\d{10}|\d{9}[\dXx])$/;
@@ -811,13 +812,13 @@ $("#list").onclick=onTile;$("#exp").onclick=onTile;
 $("#detx").onclick=()=>$("#det").close();
 $("#det").onclick=e=>{if(e.target===$("#det")){$("#det").close();return}if(e.target.closest("button[data-a]")){$("#det").close();onAct(e)}};
 $("#nav").onclick=e=>{const b=e.target.closest("button[data-t]");if(b){selMode=false;sel=new Set();tab=b.dataset.t;render();if(tab==="set")loadAdmin();scrollTo(0,0)}};
-$("#q").oninput=render;let F={st:"",r:0,a:"",b:"",s:"title"};
+$("#q").oninput=render;let F={st:"",r:0,a:"",b:"",s:"title",cv:""};
 const skey=b=>b.series?norm(b.series):"~";
 const sorter=(a,b)=>F.s==="series"?(skey(a)<skey(b)?-1:skey(a)>skey(b)?1:((a.tome==null?1e9:a.tome)-(b.tome==null?1e9:b.tome))||byTitle(a,b)):F.s==="author"?(a.author||"").localeCompare(b.author||"","fr"):F.s==="recent"?(b.at||0)-(a.at||0):F.s==="rating"?(b.rating||0)-(a.rating||0):byTitle(a,b);
-const nF=()=>(F.st?1:0)+(F.r?1:0)+(F.a?1:0)+(F.b?1:0)+(F.s!=="title"?1:0);
-$("#fbtn").onclick=()=>{$("#x_st").value=F.st;$("#x_r").value=F.r;$("#x_a").value=F.a;$("#x_b").value=F.b;$("#x_s").value=F.s;$("#flt").showModal()};
-$("#x_ok").onclick=()=>{F={st:$("#x_st").value,r:+$("#x_r").value,a:$("#x_a").value,b:$("#x_b").value,s:$("#x_s").value};$("#flt").close();$("#fc").textContent=nF()?" ("+nF()+")":"";render()};
-$("#x_reset").onclick=()=>{F={st:"",r:0,a:"",b:"",s:"title"};$("#flt").close();$("#fc").textContent="";render()};
+const nF=()=>(F.st?1:0)+(F.r?1:0)+(F.a?1:0)+(F.b?1:0)+(F.cv?1:0)+(F.s!=="title"?1:0);
+$("#fbtn").onclick=()=>{$("#x_st").value=F.st;$("#x_r").value=F.r;$("#x_a").value=F.a;$("#x_b").value=F.b;$("#x_cv").value=F.cv||"";$("#x_s").value=F.s;$("#flt").showModal()};
+$("#x_ok").onclick=()=>{F={st:$("#x_st").value,r:+$("#x_r").value,a:$("#x_a").value,b:$("#x_b").value,cv:$("#x_cv").value,s:$("#x_s").value};$("#flt").close();$("#fc").textContent=nF()?" ("+nF()+")":"";render()};
+$("#x_reset").onclick=()=>{F={st:"",r:0,a:"",b:"",s:"title",cv:""};$("#flt").close();$("#fc").textContent="";render()};
 const idxGo=e=>{const t=document.elementFromPoint(e.clientX,e.clientY);if(t&&t.dataset&&t.dataset.k)jump(t.dataset.k)};
 const VM=["c2","c3","c4","list"];
 const VI={c2:'<svg class="ic" viewBox="0 0 24 24"><rect x="3.5" y="4" width="7.5" height="16"/><rect x="13" y="4" width="7.5" height="16"/></svg>',c3:'<svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="5" height="16"/><rect x="9.5" y="4" width="5" height="16"/><rect x="16" y="4" width="5" height="16"/></svg>',c4:'<svg class="ic" viewBox="0 0 24 24"><rect x="2.5" y="4" width="3.5" height="16"/><rect x="8" y="4" width="3.5" height="16"/><rect x="13.5" y="4" width="3.5" height="16"/><rect x="19" y="4" width="3" height="16"/></svg>',list:'<svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>'};
@@ -983,6 +984,14 @@ async function fetchCover(b){
       const bm=await createImageBitmap(bl);if(bm.width<80||bm.height<100)return null;if(isPh(bm)){if(u===b.img)b._ph=1;return null}return bl}catch(_){return null}
   };
   for(const u of src){const bl=await tryU(u);if(bl)return bl}
+  /* repli : Open Library retrouve parfois une autre édition du même ISBN */
+  try{const j=await jget("https://openlibrary.org/search.json?limit=3&fields=cover_i&q=isbn:"+i);for(const x of (j&&j.docs)||[]){if(!x.cover_i)continue;const bl=await tryU("https://covers.openlibrary.org/b/id/"+x.cover_i+"-L.jpg");if(bl)return bl}}catch(_){}
+  /* repli : Google Books par titre d'album + auteur (autres éditions de la même BD) */
+  try{
+    const album=(String(b.title||"").split(" - ").slice(1).join(" - ")||b.title||"").trim(),au=String(b.author||"").split(",")[0].trim();
+    if(album.length>2){const l=await gbooks("intitle:"+enc(album)+(au?"+inauthor:"+enc(au):""),8);
+      for(const x of l){if(!x.img||!simT(x.title,album))continue;const bl=await tryU(bigImg(x.img));if(bl)return bl}}
+  }catch(_){}
   /* repli : ISBN inconnu ou faux -> recherche par titre de l'album (et auteur) sur Open Library */
   try{
     const album=(String(b.title||"").split(" - ").slice(1).join(" - ")||b.title||"").trim(),au=String(b.author||"").split(",")[0].trim();
@@ -1008,7 +1017,8 @@ $("#cv_d").onclick=()=>{
     if(cvTried.has(b.id))return["Introuvable","Aucune source n’a cette couverture : ajoute la photo à la main."];
     return["Pas encore essayé","Clique sur « Chercher les couvertures manquantes »."]};
   const rows=L.map(b=>({b,w:why(b)})).sort((x,y)=>x.w[0].localeCompare(y.w[0])||String(x.b.title).localeCompare(String(y.b.title),"fr"));
-  out.innerHTML="<b>"+L.length+" livre(s) sans couverture</b><br>"+rows.map(r=>"• "+esc(r.b.title)+" — <i>"+esc(r.b.isbn||"sans ISBN")+"</i> — <b>"+r.w[0]+"</b> : "+r.w[1]+(r.b.isbn?" <a href=\"https://www.amazon.fr/s?k="+encodeURIComponent(String(r.b.isbn).replace(/[^0-9Xx]/g,""))+"\" target=\"_blank\" rel=\"noopener\">Voir sur Amazon</a>":"")).join("<br>");
+  out.innerHTML="<b>"+L.length+" livre(s) sans couverture</b> <button class=\"btn sm\" id=\"cv_show\" type=\"button\">Les afficher dans ma bibliothèque</button><br>"+rows.map(r=>"• "+esc(r.b.title)+" — <i>"+esc(r.b.isbn||"sans ISBN")+"</i> — <b>"+r.w[0]+"</b> : "+r.w[1]+(r.b.isbn?" <a href=\"https://www.amazon.fr/s?k="+encodeURIComponent(String(r.b.isbn).replace(/[^0-9Xx]/g,""))+"\" target=\"_blank\" rel=\"noopener\">Voir sur Amazon</a>":"")).join("<br>");
+  $("#cv_show").onclick=()=>{F.cv="sans";tab=mine.some(b=>!b.img)?"me":"fam";$("#fc").textContent=nF()?" ("+nF()+")":"";selMode=false;sel=new Set();render();scrollTo(0,0)};
 };
 $("#cv_r").onclick=async()=>{
   const st=$("#cv_s");if(demo||cvRun)return;
