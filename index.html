@@ -198,8 +198,8 @@ input[type=checkbox]{width:auto;padding:0}
     <div class="acts"><button class="btn ghost sm" id="se_b" type="button">Ranger en séries d’après les titres</button></div>
     <div id="se_s" class="mu" style="margin-top:6px">Repère les titres du type « Astérix T5 - … » et renseigne la série et le tome.</div>
     <label class="lb" style="margin-top:16px">Couvertures</label>
-    <div class="acts"><button class="btn sm" id="cv_b" type="button">Chercher les couvertures manquantes</button><button class="btn ghost sm" id="cv_x" type="button" hidden>Arrêter</button><button class="btn ghost sm" id="cv_r" type="button">Effacer les couvertures enregistrées</button><button class="btn ghost sm" id="cv_d" type="button">Diagnostic des sans-couverture</button></div><div id="cv_l" class="mu" style="margin-top:8px;font-size:.82rem"></div>
-    <div id="cv_s" class="mu" style="margin-top:6px">Cherche chaque couverture par ISBN (Amazon, Open Library) et la copie dans ton Supabase. Les livres sans couverture trouvée gardent leur jaquette colorée.</div>
+    <div class="acts"><button class="btn sm" id="cv_b" type="button">Chercher les couvertures manquantes</button><button class="btn sm" id="cv_k" type="button">Enregistrer les couvertures ajoutées / modifiées</button><button class="btn ghost sm" id="cv_x" type="button" hidden>Arrêter</button><button class="btn ghost sm" id="cv_r" type="button">Effacer les couvertures enregistrées</button><button class="btn ghost sm" id="cv_d" type="button">Diagnostic des sans-couverture</button></div><div id="cv_l" class="mu" style="margin-top:8px;font-size:.82rem"></div>
+    <div id="cv_s" class="mu" style="margin-top:6px"><b>Chercher les couvertures manquantes</b> : trouve les couvertures des livres qui n’en ont pas (par ISBN, puis par titre). <b>Enregistrer les couvertures ajoutées / modifiées</b> : copie dans ton Supabase les images ajoutées à la main, par photo, collage ou lien, sans rien chercher ni remplacer.</div>
     <label class="lb" style="margin-top:16px">Synopsis manquants</label>
     <div class="acts"><button class="btn ghost sm" id="en_b" type="button">Chercher les synopsis</button><button class="btn ghost sm" id="en_x" type="button" hidden>Arrêter</button></div>
     <div id="en_s" class="mu" style="margin-top:6px">Les couvertures s’affichent automatiquement d’après l’ISBN. Ici, on cherche seulement les synopsis.</div>
@@ -215,13 +215,14 @@ input[type=checkbox]{width:auto;padding:0}
   <div id="s_m" style="font-size:.8rem;color:var(--mute);margin-top:8px"></div></div>
   </details>
   <div id="appver" class="mu" style="text-align:center;margin:18px 0 6px;font-size:.78rem"></div>
+  <div style="text-align:center;margin-bottom:10px"><button class="btn ghost sm" id="reloadapp" type="button">↻ Actualiser</button></div>
 <div id="v-adm" hidden><h2>Administration</h2><div id="adm"></div></div>
 </div>
 <div id="msg"></div>
 </div>
 
 <div id="idx" hidden></div>
-<div id="selbar" hidden><span id="selcnt"></span><button class="btn ghost sm" id="selall" type="button">Tout</button><button class="btn sm" id="seldel" type="button" style="background:var(--acc)">Supprimer</button><button class="btn ghost sm" id="selx" type="button">Annuler</button></div>
+<div id="selbar" hidden><span id="selcnt"></span><button class="btn ghost sm" id="selall" type="button">Tout</button><button class="btn sm" id="selmod" type="button">Modifier</button><button class="btn sm" id="seldel" type="button" style="background:var(--acc)">Supprimer</button><button class="btn ghost sm" id="selx" type="button">Annuler</button></div>
 <nav id="nav">
   <button data-t="fam" class="on"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>Famille</button>
   <button data-t="me"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/><path d="M9 8h6"/></svg>Mes livres</button>
@@ -229,6 +230,14 @@ input[type=checkbox]{width:auto;padding:0}
   <button data-t="set"><svg viewBox="0 0 24 24"><path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.5"/><circle cx="8" cy="17" r="2.5"/></svg>Réglages</button>
 </nav>
 
+<dialog id="bulk"><h2 style="margin:0 0 4px">Modifier la sélection</h2><div id="bulkn" class="mu" style="margin-bottom:6px"></div>
+<label class="lb">Catégorie</label><select id="bk_c"></select>
+<label class="lb">Statut</label><select id="bk_s"><option value="">Ne pas changer</option><option value="alire">À lire</option><option value="encours">En cours</option><option value="lu">Lu</option></select>
+<label class="lb">Où le ranger</label><select id="bk_w"><option value="">Ne pas changer</option><option value="me">Mes livres (privé)</option><option value="fam">Bibliothèque familiale</option></select>
+<label class="lb">Auteur (laisser vide pour ne pas changer)</label><input id="bk_a" maxlength="80">
+<label class="lb">Série (laisser vide pour ne pas changer)</label><input id="bk_se" maxlength="80">
+<label style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:.85rem"><input type="checkbox" id="bk_nose">Retirer la série et le tome</label>
+<div class="foot"><button class="btn ghost" id="bk_x" type="button">Annuler</button><button class="btn" id="bk_ok" type="button">Appliquer</button></div></dialog>
 <dialog id="flt"><h2 style="margin:0 0 4px">Filtres</h2>
 <label class="lb">Statut</label><select id="x_st"><option value="">Tous</option><option value="alire">À lire</option><option value="encours">En cours</option><option value="lu">Lu</option></select>
 <label class="lb">Note minimum</label><select id="x_r"><option value="0">Toutes</option><option value="3">3 / 5 et plus</option><option value="4">4 / 5 et plus</option><option value="5">5 / 5</option></select>
@@ -481,6 +490,7 @@ $("#codebtn").onclick=()=>{batch=false;startCam()};
 $("#batchbtn").onclick=()=>{if(editing)return;if(!confirm("Scan en rafale : chaque code-barres scanné ajoute directement le livre (catégorie, statut et destination choisis ci-dessus), sans fiche à valider. Touche « Terminer » à la fin. Continuer ?"))return;batch=true;batchQ=[];batchSeen=new Set();batchStat={ok:0,dup:0,miss:[]};batchDone=[];saveCat($("#f_c").value);$("#camx").textContent="Terminer";startCam()};
 $("#camph").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam();$("#file2").click()};
 $("#camx").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam()};
+$("#reloadapp").onclick=async()=>{try{if(window.caches)for(const k of await caches.keys())await caches.delete(k)}catch(_){}try{if(navigator.serviceWorker)for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister()}catch(_){}location.replace(location.pathname+"?r="+Date.now())};
 $("#cam").onclose=()=>{stopCam();if(batch)finishBatch()};
 const say=m=>$("#scst").textContent=m;
 const imgOk=u=>new Promise(r=>{const i=new Image();i.onload=()=>r(i.width>1);i.onerror=()=>r(false);i.src=u});
@@ -596,7 +606,7 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.series?" · "+r.series+" tome "+r.tome:"")+(r.synopsis||$("#f_y").value?"":" (synopsis en français introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v16 · 14/11/2026";
+const APP_VERSION="v17 · 14/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const CATOK=["poche","grand","ancien","bd"];let memCat="";
 const lastCat=()=>{
@@ -928,7 +938,12 @@ function openDet(s,id){
 }
 function surprise(){const a=[...mine.map(b=>({...b,_s:"me"})),...fam.map(b=>({...b,_s:"fam"}))],u=a.filter(b=>b.status==="alire"),p=u.length?u:a;if(p.length){const b=p[Math.floor(Math.random()*p.length)];openDet(b._s,b.id)}}
 function onTile(e){
-  if(selMode&&e.currentTarget===$("#list")){const t=e.target.closest(".tile");if(t){const b=(t.dataset.s==="me"?mine:fam).find(x=>x.id===t.dataset.id);if(b&&b.by===uid){if(sel.has(b.id))sel.delete(b.id);else sel.add(b.id);t.classList.toggle("sel",sel.has(b.id));updSel()}}return}
+  if(selMode&&e.currentTarget===$("#list")){
+    const h=e.target.closest(".sgh");
+    if(h){const ts=[];for(let n=h.nextElementSibling;n&&!n.classList.contains("sgh");n=n.nextElementSibling)if(n.classList.contains("tile"))ts.push(n);
+      const own=ts.filter(t=>{const b=(t.dataset.s==="me"?mine:fam).find(x=>x.id===t.dataset.id);return b&&b.by===uid}),all=own.length&&own.every(t=>sel.has(t.dataset.id));
+      own.forEach(t=>{if(all)sel.delete(t.dataset.id);else sel.add(t.dataset.id);t.classList.toggle("sel",sel.has(t.dataset.id))});updSel();return}
+    const t=e.target.closest(".tile");if(t){const b=(t.dataset.s==="me"?mine:fam).find(x=>x.id===t.dataset.id);if(b&&b.by===uid){if(sel.has(b.id))sel.delete(b.id);else sel.add(b.id);t.classList.toggle("sel",sel.has(b.id));updSel()}}return}
   if(e.target.closest("#surp")){surprise();return}
   if(e.target.closest("#ideamore")){ideaSeed++;render();return}
   if(e.target.closest("#srmore")){serAll=!serAll;render();return}
@@ -1071,7 +1086,7 @@ async function importCSV(text){
 }
 
 let selMode=false,sel=new Set(),curL=[];
-function updSel(){$("#selcnt").textContent=sel.size+" sélectionné(s)";$("#seldel").disabled=!sel.size}
+function updSel(){$("#selcnt").textContent=sel.size+" sélectionné(s)";$("#seldel").disabled=!sel.size;$("#selmod").disabled=!sel.size}
 function setSel(on){selMode=on;sel=new Set();render()}
 $("#selbtn").onclick=()=>setSel(!selMode);
 $("#selx").onclick=()=>setSel(false);
@@ -1084,6 +1099,23 @@ $("#seldel").onclick=async()=>{
   try{for(let i=0;i<ids.length;i+=60){$("#selcnt").textContent="Suppression "+Math.min(i+60,ids.length)+" / "+ids.length+"…";const part=ids.slice(i,i+60),old=[...mine,...fam].filter(x=>part.includes(x.id));await ok(sb.from("books").delete().in("id",part));await rmFiles(old)}}
   catch(e){alert("Suppression interrompue : "+(e&&e.message?e.message:"erreur")+". Les livres déjà supprimés le restent.")}
   selMode=false;sel=new Set();await load();
+};
+$("#selmod").onclick=()=>{
+  if(!sel.size)return;if(demo){alert("Indisponible en mode aperçu.");return}
+  $("#bk_c").innerHTML='<option value="">Ne pas changer</option>'+$("#f_c").innerHTML;$("#bk_c").value="";$("#bk_s").value="";$("#bk_w").value="";$("#bk_a").value="";$("#bk_se").value="";$("#bk_nose").checked=false;
+  $("#bulkn").textContent=sel.size+" livre(s) : seuls les champs que tu remplis seront modifiés.";$("#bulk").showModal()};
+$("#bk_x").onclick=()=>$("#bulk").close();
+$("#bk_ok").onclick=async()=>{
+  const ids=[...sel],patch={};
+  if($("#bk_c").value)patch.cat=$("#bk_c").value;if($("#bk_s").value)patch.status=$("#bk_s").value;if($("#bk_w").value)patch.shared=$("#bk_w").value==="fam";
+  if($("#bk_a").value.trim())patch.author=$("#bk_a").value.trim();
+  if($("#bk_nose").checked){patch.series=null;patch.tome=null}else if($("#bk_se").value.trim())patch.series=$("#bk_se").value.trim();
+  if(!Object.keys(patch).length){$("#bulk").close();return}
+  if(!confirm("Appliquer la modification à "+ids.length+" livre(s) ?"))return;
+  $("#bk_ok").disabled=true;
+  try{for(let i=0;i<ids.length;i+=60){$("#bulkn").textContent="Modification "+Math.min(i+60,ids.length)+" / "+ids.length+"…";const part=ids.slice(i,i+60);await sbw(d=>sb.from("books").update(d).in("id",part),patch)}}
+  catch(e){alert("Modification interrompue : "+(e&&e.message?e.message:"erreur"))}
+  $("#bk_ok").disabled=false;$("#bulk").close();selMode=false;sel=new Set();await load();
 };
 $("#se_b").onclick=async()=>{
   const st=$("#se_s");if(demo){st.textContent="Indisponible en mode aperçu.";return}
@@ -1169,9 +1201,10 @@ $("#cv_r").onclick=async()=>{
   }catch(e){st.textContent="Échec : "+((e&&e.message)||"erreur")}
   $("#cv_r").disabled=false;
 };
-$("#cv_b").onclick=async()=>{
+async function coverJob(mode){
   const st=$("#cv_s");if(cvRun)return;if(demo){st.textContent="Indisponible en mode aperçu.";return}
   try{
+    if(mode!=="missing")throw 0;
     st.textContent="Vérification des images enregistrées…";$("#cv_b").disabled=true;
     const files=[];for(let o=0;;o+=1000){const r=await sb.storage.from("covers").list(uid,{limit:1000,offset:o});if(r.error||!r.data||!r.data.length)break;files.push(...r.data);if(r.data.length<1000)break}
     const bySize={};files.filter(f=>/^c-/.test(f.name)&&f.metadata&&f.metadata.size).forEach(f=>(bySize[f.metadata.size]=bySize[f.metadata.size]||[]).push(f.name));
@@ -1185,6 +1218,7 @@ $("#cv_b").onclick=async()=>{
     }
   }catch(_){}
   try{/* cherche les fausses images grises déjà enregistrées (même de tailles différentes) */
+    if(mode!=="missing")throw 0;
     const L=[...mine,...fam.filter(b=>b.by===uid)].filter(b=>String(b.img||"").includes("/covers/"+uid+"/c-")),bad=[];let k=0,n=0;
     if(L.length){
       st.textContent="Vérification de "+L.length+" couverture(s) enregistrée(s)…";
@@ -1200,14 +1234,25 @@ $("#cv_b").onclick=async()=>{
     }
   }catch(_){}
   $("#cv_b").disabled=false;
-  let todo=cvCands().filter(b=>!cvTried.has(b.id));
-  if(!todo.length){const all=cvCands();if(all.length&&confirm("Réessayer les "+all.length+" couvertures introuvables ?")){cvTried=new Set();todo=all}else{st.textContent="Toutes les couvertures possibles sont déjà enregistrées.";return}}
-  cvRun=true;$("#cv_x").hidden=false;$("#cv_b").disabled=true;let done=0,okn=0,fail=0,why="",idx=0,fatal=false;
+  let todo;
+  if(mode==="save"){todo=[...mine,...fam.filter(b=>b.by===uid)].filter(b=>b.img&&!isOurs(b.img));if(!todo.length){st.textContent="Rien à enregistrer : toutes les couvertures sont déjà dans ton Supabase.";return}}
+  else{
+    todo=cvCands().filter(b=>!b.img&&!cvTried.has(b.id));
+    if(!todo.length){const all=cvCands().filter(b=>!b.img);if(all.length&&confirm("Réessayer les "+all.length+" couvertures introuvables ?")){cvTried=new Set();todo=all}else{st.textContent="Aucune couverture manquante à chercher.";return}}
+  }
+  cvRun=true;$("#cv_x").hidden=false;$("#cv_b").disabled=true;$("#cv_k").disabled=true;let done=0,okn=0,fail=0,why="",idx=0,fatal=false;
   const worker=async()=>{
     while(cvRun&&!fatal){
       const b=todo[idx++];if(!b)return;
       try{
-        const bl=await fetchCover(b);
+        let bl;
+        if(mode==="save"){/* on garde l'image choisie : on la copie telle quelle, sans chercher ailleurs */
+          bl=null;try{if(/^data:/.test(b.img))bl=await (await fetch(b.img)).blob();else{const r=await fetch(PX(b.img));if(r.ok){const x=await r.blob();if(/image/.test(x.type)&&x.size>=2500)bl=x}}}catch(_){}
+          if(bl){const url=await upImg(bl,"p-"+b.id+"-"+Date.now().toString(36)+".jpg");await sbw(d=>sb.from("books").update(d).eq("id",b.id),{img:url});b.img=url;okn++}
+          else fail++;
+          done++;st.textContent="Enregistrement : "+done+" / "+todo.length+" · "+okn+" copiée(s) (ne quitte pas la page)";
+          await new Promise(r=>setTimeout(r,80));continue}
+        bl=await fetchCover(b);
         if(bl){const url=await upImg(bl,"c-"+b.id+"-"+Date.now().toString(36)+".jpg");await sbw(d=>sb.from("books").update(d).eq("id",b.id),{img:url});b.img=url;okn++}
         else{fail++;cvTried.add(b.id);if(b._ph){try{await sbw(d=>sb.from("books").update(d).eq("id",b.id),{img:""});b.img=""}catch(_){}}}
       }catch(err){
@@ -1220,11 +1265,13 @@ $("#cv_b").onclick=async()=>{
   };
   await Promise.all([worker(),worker(),worker()]);
   try{localStorage.setItem("booky-cvtried",JSON.stringify([...cvTried]))}catch(_){}
-  cvRun=false;$("#cv_x").hidden=true;$("#cv_b").disabled=false;
-  st.textContent=okn+" couverture(s) enregistrée(s), "+fail+" introuvable(s) (elles gardent leur jaquette colorée). "+why;
+  cvRun=false;$("#cv_x").hidden=true;$("#cv_b").disabled=false;$("#cv_k").disabled=false;
+  st.textContent=mode==="save"?okn+" couverture(s) enregistrée(s) dans ton Supabase, "+fail+" impossible(s) (lien cassé : elles restent telles quelles). "+why:okn+" couverture(s) trouvée(s) et enregistrée(s), "+fail+" introuvable(s) (elles gardent leur jaquette colorée). "+why;
   try{localStorage.setItem("booky-c-"+uid,JSON.stringify({all:[...mine,...fam],names,me}))}catch(_){}
   render();
-};
+}
+$("#cv_b").onclick=()=>coverJob("missing");
+$("#cv_k").onclick=()=>coverJob("save");
 /* ===== Compléter couvertures et synopsis ===== */
 let enRun=false,tried=new Set();
 try{tried=new Set(JSON.parse(localStorage.getItem("booky-tried")||"[]"))}catch(_){}
