@@ -137,6 +137,8 @@ nav button{flex:1;background:none;border:0;color:var(--mute);padding:6px 2px 4px
 nav button.on{color:var(--ink)}
 nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.xbtn{position:sticky;top:0;float:right;z-index:5;width:30px;height:30px;margin:-6px -6px 0 8px;border:0;border-radius:50%;background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--mute);font-size:.9rem;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.xbtn:focus,.xbtn:focus-visible{outline:none}
 dialog{border:1px solid var(--line);border-radius:16px;background:var(--bg);color:var(--ink);width:min(440px,92vw);padding:18px}
 dialog::backdrop{background:rgba(0,0,0,.5)}
 dialog label{display:block;margin:10px 0 3px;font-size:.85rem;color:var(--mute)}
@@ -228,8 +230,7 @@ input[type=checkbox]{width:auto;padding:0}
   <div class="acts" style="margin-top:14px"><button class="btn ghost sm" id="s_ex">Exporter mes livres</button><button class="btn ghost sm" id="out">Se déconnecter</button><button class="btn ghost sm" id="s_del" style="color:var(--acc)">Supprimer mon compte</button></div>
   <div id="s_m" style="font-size:.8rem;color:var(--mute);margin-top:8px"></div></div>
   </details>
-  <div id="appver" class="mu" style="text-align:center;margin:18px 0 6px;font-size:.78rem"></div>
-  <div style="text-align:center;margin-bottom:10px"><button class="btn ghost sm" id="reloadapp" type="button">↻ Actualiser</button></div>
+  <div style="display:flex;justify-content:center;align-items:center;gap:12px;margin:18px 0 10px"><span id="appver" class="mu" style="font-size:.78rem"></span><button class="btn ghost sm" id="reloadapp" type="button">↻ Actualiser</button></div>
 <div id="v-adm" hidden><h2>Administration</h2><div id="adm"></div></div>
 </div>
 <div id="msg"></div>
@@ -260,7 +261,7 @@ input[type=checkbox]{width:auto;padding:0}
 <label class="lb">Couverture</label><select id="x_cv"><option value="">Toutes</option><option value="sans">Sans couverture seulement</option></select>
 <label class="lb">Trier par</label><select id="x_s"><option value="title">Titre</option><option value="author">Auteur</option><option value="recent">Plus récents</option><option value="rating">Mieux notés</option><option value="series">Par saga / série</option></select>
 <div class="foot"><button class="btn ghost" id="x_reset">Réinitialiser</button><button class="btn" id="x_ok">Appliquer</button></div></dialog>
-<dialog id="det"><div id="detc"></div><div class="foot"><button class="btn ghost" id="detx">Fermer</button></div></dialog>
+<dialog id="det"><button class="xbtn" id="detx" type="button" aria-label="Fermer">✕</button><div id="detc"></div></dialog>
 
 <dialog id="covsheet"><h2 style="margin:0 0 4px">Couverture</h2>
 <button class="btn" id="cs_photo" type="button">📷 Prendre une photo / choisir une image</button>
@@ -310,6 +311,8 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const SUPABASE_URL=(window.BOOKY_CONFIG||{}).url||"VOTRE-PROJET",SUPABASE_KEY=(window.BOOKY_CONFIG||{}).key||"";
 let vm="c3",me={can:false,admin:false},sb=null,realSb=null,demo=false,uid=null,db=false,tab="fam",mine=[],fam=[],names={},editing=null;
+/* après « Actualiser » on revient sur la même page, à la même hauteur */
+let restoreY=0;try{const rt=sessionStorage.getItem("booky-tab");if(rt&&document.querySelector('#nav button[data-t="'+rt+'"]'))tab=rt;restoreY=+sessionStorage.getItem("booky-scroll")||0;sessionStorage.removeItem("booky-tab");sessionStorage.removeItem("booky-scroll")}catch(_){}
 const ok=async p=>{const r=await p;if(r.error)throw r.error;return r};
 const SERSQL="alter table books add column series text;\nalter table books add column tome int;";
 const PICSQL="alter table books add column pics jsonb not null default '[]'::jsonb;\ninsert into storage.buckets (id,name,public) values ('covers','covers',true) on conflict (id) do nothing;\ncreate policy \"covers ajout\" on storage.objects for insert to authenticated with check (bucket_id='covers' and (storage.foldername(name))[1]=auth.uid()::text);\ncreate policy \"covers suppression\" on storage.objects for delete to authenticated using (bucket_id='covers' and (storage.foldername(name))[1]=auth.uid()::text);";
@@ -349,7 +352,7 @@ async function start(session){
   const already=db&&uid===session.user.id&&(mine.length||fam.length);
   uid=session.user.id;db=true;
   if(!demo&&!already)try{const c=JSON.parse(localStorage.getItem("booky-c-"+uid)||"null");if(c&&c.all){Object.assign(names,c.names||{});me=c.me||me;mine=c.all.filter(r=>!r.shared);fam=c.all.filter(r=>r.shared);render()}}catch(_){}
-  await load();$("#s_n").value=names[uid]||(demo?"Moi":"");if(!demo)$("#acc").textContent=session.user.email||"";
+  await load();if(restoreY){const y=restoreY;restoreY=0;if(tab==="set"&&typeof loadAdmin==="function")try{loadAdmin()}catch(_){}setTimeout(()=>restoreScroll(y),50);setTimeout(()=>restoreScroll(y),600)}$("#s_n").value=names[uid]||(demo?"Moi":"");if(!demo)$("#acc").textContent=session.user.email||"";
 }
 async function auth(up){
   const e=$("#a_e").value.trim(),p=$("#a_p").value,n=$("#a_n").value.trim(),m=$("#a_m");m.textContent="";
@@ -537,7 +540,7 @@ $("#codebtn").onclick=()=>{batch=false;startCam()};
 $("#batchbtn").onclick=()=>{if(editing)return;if(!confirm("Scan en rafale : chaque code-barres scanné ajoute directement le livre (catégorie, statut et destination choisis ci-dessus), sans fiche à valider. Touche « Terminer » à la fin. Continuer ?"))return;batch=true;batchQ=[];batchSeen=new Set();batchStat={ok:0,dup:0,miss:[]};batchDone=[];saveCat($("#f_c").value);$("#camx").textContent="Terminer";startCam()};
 $("#camph").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam();$("#file2").click()};
 $("#camx").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam()};
-$("#reloadapp").onclick=async()=>{try{if(window.caches)for(const k of await caches.keys())await caches.delete(k)}catch(_){}try{if(navigator.serviceWorker)for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister()}catch(_){}location.replace(location.pathname+"?r="+Date.now())};
+$("#reloadapp").onclick=async()=>{try{sessionStorage.setItem("booky-tab",tab);sessionStorage.setItem("booky-scroll",String(scrollY))}catch(_){}try{if(window.caches)for(const k of await caches.keys())await caches.delete(k)}catch(_){}try{if(navigator.serviceWorker)for(const r of await navigator.serviceWorker.getRegistrations())await r.unregister()}catch(_){}location.replace(location.pathname+"?r="+Date.now())};
 $("#cam").onclose=()=>{stopCam();if(batch)finishBatch()};
 const say=m=>$("#scst").textContent=m;
 const imgOk=u=>new Promise(r=>{const i=new Image();i.onload=()=>r(i.width>1);i.onerror=()=>r(false);i.src=u});
@@ -650,7 +653,7 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.series?" · "+r.series+" tome "+r.tome:"")+(r.synopsis||$("#f_y").value?"":" (synopsis en français introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v19 · 14/11/2026";
+const APP_VERSION="v20 · 14/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const CATOK=["poche","grand","ancien","bd"];let memCat="";
 const lastCat=()=>{
@@ -989,7 +992,7 @@ function openDet(s,id){
   $("#detc").insertAdjacentHTML("beforeend",`<div class="dacts">${own?`<button class="btn dmain" data-a="edit" ${d}>Modifier la fiche</button>`:""}${acts?`<div class="acts">${acts}</div>`:""}</div>`);
   const pa=$("#pa");if(pa)pa.onclick=()=>$("#pf").click();
   const en=$("#enr");if(en)en.onclick=async()=>{en.textContent="Recherche…";const g=await findInfo({isbn:b.isbn,title:b.title,author:b.author});if(!g.img&&!g.synopsis){en.textContent="Rien trouvé";return}const img=b.img||g.img;try{await ok(sb.from("books").update({img,synopsis:b.synopsis||g.synopsis,isbn:b.isbn||g.isbn}).eq("id",b.id));await load();openDet(s,id)}catch(_){en.textContent="Échec"}};
-  if(!$("#det").open)$("#det").showModal();
+  if(!$("#det").open){$("#det").showModal();$("#det").scrollTop=0;requestAnimationFrame(()=>{$("#det").scrollTop=0})}
 }
 function surprise(){const a=[...mine.map(b=>({...b,_s:"me"})),...fam.map(b=>({...b,_s:"fam"}))],u=a.filter(b=>b.status==="alire"),p=u.length?u:a;if(p.length){const b=p[Math.floor(Math.random()*p.length)];openDet(b._s,b.id)}}
 function onTile(e){
