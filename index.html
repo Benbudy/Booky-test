@@ -217,7 +217,7 @@ input[type=checkbox]{width:auto;padding:0}
     <div class="acts"><button class="btn sm" id="cv_b" type="button">Chercher les couvertures manquantes</button><button class="btn sm" id="cv_k" type="button">Enregistrer les couvertures ajoutées / modifiées</button><button class="btn ghost sm" id="cv_x" type="button" hidden>Arrêter</button><button class="btn ghost sm" id="cv_r" type="button">Effacer les couvertures enregistrées</button><button class="btn ghost sm" id="cv_d" type="button">Diagnostic des sans-couverture</button></div><div id="cv_l" class="mu" style="margin-top:8px;font-size:.82rem"></div>
     <div id="cv_s" class="mu" style="margin-top:6px"><b>Chercher les couvertures manquantes</b> : trouve les couvertures des livres qui n’en ont pas (par ISBN, puis par titre). <b>Enregistrer les couvertures ajoutées / modifiées</b> : copie dans ton Supabase les images ajoutées à la main, par photo, collage ou lien, sans rien chercher ni remplacer.</div>
     <label class="lb" style="margin-top:16px">Synopsis manquants</label>
-    <div class="acts"><button class="btn ghost sm" id="en_b" type="button">Chercher les synopsis</button><button class="btn ghost sm" id="en_x" type="button" hidden>Arrêter</button></div>
+    <div class="acts"><button class="btn ghost sm" id="en_b" type="button">Chercher les synopsis</button><button class="btn ghost sm" id="en_c" type="button">Retirer les synopsis non français</button><button class="btn ghost sm" id="en_x" type="button" hidden>Arrêter</button></div>
     <div id="en_s" class="mu" style="margin-top:6px">Les couvertures s’affichent automatiquement d’après l’ISBN. Ici, on cherche seulement les synopsis.</div>
     <label class="lb" style="margin-top:16px">Exporter en CSV</label>
     <div class="row"><select id="ex_w"><option value="me">Mes livres privés</option><option value="fam">Bibliothèque familiale</option><option value="all">Tout</option></select><button class="btn ghost sm" id="ex_b" type="button" style="flex:none">Exporter</button></div>
@@ -586,7 +586,15 @@ const cm=s=>{const m=String(s||"").match(/[\d.,]+/g);if(!m)return 0;const n=m.sl
 function gmap(v){const ids=v.industryIdentifiers||[],m={title:(v.title||"")+(v.subtitle?" : "+v.subtitle:""),author:(v.authors||[]).join(", "),img:gimg(v),synopsis:strip(v.description),isbn:((ids.find(x=>x.type==="ISBN_13")||ids[0]||{}).identifier)||"",publisher:v.publisher||"",year:parseInt(v.publishedDate)||0,pages:v.pageCount||0,cats:(v.categories||[]).join(" "),height:cm((v.dimensions||{}).height)};m.cat=guessCat(m);return m}
 try{localStorage.removeItem("booky-gkey")}catch(_){}
 /* synopsis en anglais ? (on veut du français) */
-function isEn(t){t=String(t||"");const en=(t.match(/\b(the|and|of|is|with|his|her|their|they|who|when|which|from|that|this|are|was|has|have|will)\b/gi)||[]).length,fr=(t.match(/\b(le|la|les|des|et|un|une|du|est|dans|pour|qui|que|sur|avec|son|sa|ses|au|aux|par|il|elle|ils)\b/gi)||[]).length;return en>=4&&en>fr*1.5}
+function isEn(t){t=String(t||"");const c=r=>(t.match(r)||[]).length,
+  fr=c(/\b(le|la|les|des|et|un|une|du|est|dans|pour|qui|que|sur|avec|son|sa|ses|au|aux|par|il|elle|ils)\b/gi),
+  o=[/\b(the|and|of|is|with|his|her|their|they|who|when|which|from|that|this|are|was|has|have|will)\b/gi,
+     /\b(der|die|das|und|ist|nicht|mit|ein|eine|sich|von|zu|den|dem|auf|für|er|sie|wird|werden|auch|als|bei)\b/gi,
+     /\b(el|los|las|y|que|de|en|un|una|por|con|para|es|su|sus|del|al|se|lo)\b/gi,
+     /\b(il|lo|gli|che|di|un|una|per|con|sono|della|del|nel|alla|suo|sua|come)\b/gi,
+     /\b(de|het|een|en|van|dat|die|niet|met|zijn|voor|op|ook|maar|wordt)\b/gi,
+     /\b(os|as|e|que|do|da|em|um|uma|para|com|não|mais|dos|das|seu|sua)\b/gi].map(c);
+  const m=Math.max(...o);return m>=4&&m>fr*1.3}
 /* « Aslak - Tome 2 - Le mât », « Aslak T.2 » -> série Aslak, tome 2, titre « Aslak T2 - Le mât du milieu » */
 function splitSeries(t){t=String(t||"").trim();
   const m=t.match(/^(.+?)(?:\s+|\s*[,:–-]\s*)(?:tome|t\.?|vol(?:ume)?\.?|n[°o]\.?|#)\s*0*(\d{1,3})\b\s*(?:[-–:,.]\s*)?(.*)$/i);
@@ -653,7 +661,7 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.series?" · "+r.series+" tome "+r.tome:"")+(r.synopsis||$("#f_y").value?"":" (synopsis en français introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v20 · 14/11/2026";
+const APP_VERSION="v21 · 14/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const CATOK=["poche","grand","ancien","bd"];let memCat="";
 const lastCat=()=>{
@@ -894,7 +902,7 @@ $("#save").onclick=async()=>{
   {const old=editing&&[...mine,...fam].find(x=>x.id===editing.id),had=old&&(old.series||old.tome!=null);if(!had){if(data.series==null)delete data.series;if(data.tome==null)delete data.tome}}
   if(/^data:/.test(data.img)&&!demo){try{const bl=await (await fetch(data.img)).blob();data.img=await upImg(bl,"p-"+(editing?editing.id:"n")+"-"+Date.now().toString(36)+".jpg")}catch(_){}}
   const needCat=false;
-  if(!data.img||!data.synopsis||needCat){$("#save").disabled=true;try{const r=await findInfo({isbn:data.isbn,title,author:data.author});if(!data.img&&r.img)data.img=r.img;if(!data.synopsis)data.synopsis=r.synopsis;if(!data.isbn&&data.cat!=="ancien")data.isbn=r.isbn;if(needCat&&r.cat)data.cat=r.cat}catch(_){}}
+  if(!editing&&(!data.img||!data.synopsis||needCat)){$("#save").disabled=true;try{const r=await findInfo({isbn:data.isbn,title,author:data.author});if(!data.img&&r.img)data.img=r.img;if(!data.synopsis)data.synopsis=r.synopsis;if(!data.isbn&&data.cat!=="ancien")data.isbn=r.isbn;if(needCat&&r.cat)data.cat=r.cat}catch(_){}}
   if(!editing)saveCat(data.cat);
   try{
     if(editing)await sbw(d=>sb.from("books").update(d).eq("id",editing.id),data);
@@ -1328,6 +1336,15 @@ async function coverJob(mode){
   try{localStorage.setItem("booky-c-"+uid,JSON.stringify({all:[...mine,...fam],names,me}))}catch(_){}
   render();
 }
+$("#en_c").onclick=async()=>{
+  const st=$("#en_s");if(demo){st.textContent="Indisponible en mode aperçu.";return}
+  const L=[...mine,...fam.filter(b=>b.by===uid)].filter(b=>b.synopsis&&isEn(b.synopsis));
+  if(!L.length){st.textContent="Aucun synopsis dans une autre langue détecté.";return}
+  if(!confirm("Retirer le synopsis de "+L.length+" livre(s) (anglais, allemand, espagnol, etc.) ?\n\n"+L.slice(0,8).map(b=>"• "+b.title).join("\n")+(L.length>8?"\n…":"")))return;
+  $("#en_c").disabled=true;
+  try{for(let k=0;k<L.length;k+=60)await ok(sb.from("books").update({synopsis:""}).in("id",L.slice(k,k+60).map(b=>b.id)));await load();st.textContent=L.length+" synopsis retiré(s). « Chercher les synopsis » peut en chercher un en français."}
+  catch(e){st.textContent="Échec : "+((e&&e.message)||"erreur")}
+  $("#en_c").disabled=false};
 $("#cv_b").onclick=()=>coverJob("missing");
 $("#cv_k").onclick=()=>coverJob("save");
 /* ===== Compléter couvertures et synopsis ===== */
