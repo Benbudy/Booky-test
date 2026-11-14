@@ -270,7 +270,7 @@ input[type=checkbox]{width:auto;padding:0}
 <button class="btn ghost" id="cs_x" type="button">Annuler</button></dialog>
 <dialog id="dlg">
   <h2 id="dt" style="margin:0 0 4px">Nouveau livre</h2>
-  <div class="scan"><div id="pv"></div><div class="scr"><button class="btn" id="covbtn" type="button">🖼️ Couverture</button><button class="btn ghost" id="codebtn" type="button">📷 Scanner le code-barres</button><button class="btn ghost" id="batchbtn" type="button">⚡ Scan en rafale</button><div id="scst"></div></div></div>
+  <div class="scan"><div id="pv"></div><div class="scr"><button class="btn" id="covbtn" type="button">🖼️ Couverture</button><button class="btn ghost" id="findbtn" type="button">🔎 Chercher synopsis et couverture</button><button class="btn ghost" id="codebtn" type="button">📷 Scanner le code-barres</button><button class="btn ghost" id="batchbtn" type="button">⚡ Scan en rafale</button><div id="scst"></div></div></div>
   <label>ISBN</label><div class="row"><input id="f_i" inputmode="numeric" maxlength="20" placeholder="978…"><button class="btn ghost sm" id="lookup" type="button" style="flex:none">Chercher</button></div>
   <input type="file" id="file" accept="image/*" hidden>
   <input type="file" id="file2" accept="image/*" hidden>
@@ -287,6 +287,7 @@ input[type=checkbox]{width:auto;padding:0}
   <select id="f_w"><option value="me">Mes livres (privé)</option><option value="fam">Bibliothèque familiale (partagé)</option></select>
   <label>Couleur</label>
   <div class="colors" id="cols"></div>
+  <button class="btn ghost" id="delbtn" type="button" hidden style="width:100%;justify-content:center;padding:13px;margin-top:20px;color:var(--acc)">🗑️ Supprimer ce livre</button>
   <div class="foot"><button class="btn ghost" id="cancel">Annuler</button><button class="btn" id="save">Enregistrer</button></div>
 </dialog>
 
@@ -495,7 +496,7 @@ function openDlg(b,w){
   $("#f_w").value=(w==="me"||!me.can)?"me":"fam";$("#f_w").disabled=!!b||!me.can;
   $("#f_c").value=b?(b.cat||"poche"):lastCat();curImg=b&&b.img||"";$("#f_i").value=b&&b.isbn||"";$("#f_y").value=b&&b.synopsis||"";showPv();
   catTouched=false;catAuto=false;
-  $("#codebtn").hidden=!!b;$("#batchbtn").hidden=!!b;
+  $("#codebtn").hidden=!!b;$("#batchbtn").hidden=!!b;$("#delbtn").hidden=!b||demo;
   $("#scst").textContent=b?"":"Scanne le code-barres pour retrouver le livre, sa jaquette, son synopsis et son format.";
   document.querySelector(`input[name=col][value="${b&&b.color||COLORS[0]}"]`).checked=true;
   $("#dlg").showModal();
@@ -505,6 +506,24 @@ $("#f_c").onchange=()=>{catTouched=true;if(!editing)saveCat($("#f_c").value)};
 
 function showPv(){$("#pv").innerHTML=curImg?`<img class="cov" alt="" src="${esc(curImg)}">`:""}
 function shrink(f,mx,my){return new Promise((ok,ko)=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const r=Math.min(1,(mx||300)/im.width,(my||440)/im.height),c=document.createElement("canvas");c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(bl=>{const fr=new FileReader();fr.onload=()=>ok({url:fr.result,blob:bl});fr.readAsDataURL(bl)},"image/jpeg",.72)};im.onerror=ko;im.src=u})}
+$("#delbtn").onclick=async()=>{
+  if(!editing||demo)return;const b=[...mine,...fam].find(x=>x.id===editing.id);if(!b)return;
+  if(!confirm("Supprimer « "+b.title+" » ? Cette action est irréversible."))return;
+  try{await ok(sb.from("books").delete().eq("id",b.id));await rmFiles([b]);$("#dlg").close();await load()}catch(_){alert("Suppression impossible pour le moment.")}};
+/* couverture « à toi » = collée, photographiée ou ajoutée à la main (tout sauf les couvertures trouvées automatiquement) */
+const isManual=u=>{u=String(u||"");if(!u)return false;if(/^data:/.test(u))return true;if(isOurs(u))return !/\/c-[^/]*$/.test(u);return false};
+const askReplace=()=>confirm("Tu as ajouté cette couverture toi-même. La remplacer par celle trouvée en ligne ?");
+$("#findbtn").onclick=async()=>{
+  const t=$("#f_t").value.trim(),isbn=$("#f_i").value.trim(),b=$("#findbtn");
+  if(!t&&!isbn){say("Saisis un titre ou un ISBN d’abord.");return}
+  b.disabled=true;b.textContent="Recherche…";
+  try{
+    const r=await findInfo({isbn,title:t,author:$("#f_a").value.trim()}),out=[];
+    if(r.synopsis){const cur=$("#f_y").value.trim();if(!cur||(cur!==r.synopsis&&confirm("Remplacer le synopsis actuel par celui trouvé (en français) ?"))){$("#f_y").value=r.synopsis;out.push("synopsis")}}
+    if(r.img&&r.img!==curImg){if(!curImg||!isManual(curImg)||askReplace()){curImg=r.img;showPv();out.push("couverture")}}
+    say(out.length?"Trouvé : "+out.join(" et ")+". Pense à enregistrer.":(r.found||r.synopsis||r.img?"Rien de nouveau à ajouter (ou remplacement refusé).":"Rien trouvé pour ce livre."));
+  }catch(_){say("Recherche impossible pour le moment.")}
+  b.disabled=false;b.textContent="🔎 Chercher synopsis et couverture"};
 $("#covbtn").onclick=()=>{$("#cs_auto").textContent="🔎 Chercher automatiquement";$("#covsheet").showModal()};
 $("#cs_x").onclick=()=>$("#covsheet").close();
 $("#cs_photo").onclick=()=>{$("#covsheet").close();$("#file").click()};
@@ -512,7 +531,7 @@ $("#cs_paste").onclick=async()=>{const bl=await clipImage();if(!bl)return;try{cu
 $("#cs_del").onclick=()=>{curImg="";showPv();$("#covsheet").close();say("Couverture retirée.")};
 $("#cs_auto").onclick=async()=>{const t=$("#cs_auto");t.textContent="Recherche…";t.disabled=true;
   try{const r=await findInfo({isbn:$("#f_i").value.trim(),title:$("#f_t").value.trim(),author:$("#f_a").value.trim(),light:true});
-    if(r.img){curImg=r.img;showPv();$("#covsheet").close();say("Couverture trouvée.")}else t.textContent="Aucune couverture trouvée"}
+    if(r.img){if(!curImg||!isManual(curImg)||askReplace()){curImg=r.img;showPv();$("#covsheet").close();say("Couverture trouvée.")}else t.textContent="🔎 Chercher automatiquement"}else t.textContent="Aucune couverture trouvée"}
   catch(_){t.textContent="Recherche impossible"}t.disabled=false};
 $("#codebtn").onclick=()=>{batch=false;startCam()};
 $("#batchbtn").onclick=()=>{if(editing)return;if(!confirm("Scan en rafale : chaque code-barres scanné ajoute directement le livre (catégorie, statut et destination choisis ci-dessus), sans fiche à valider. Touche « Terminer » à la fin. Continuer ?"))return;batch=true;batchQ=[];batchSeen=new Set();batchStat={ok:0,dup:0,miss:[]};batchDone=[];saveCat($("#f_c").value);$("#camx").textContent="Terminer";startCam()};
@@ -609,14 +628,11 @@ async function findInfo({isbn,title,author,light}){
   let syn=fr(g&&g.synopsis)||fr(o&&o.synopsis)||"";
   if(!syn&&t&&!light){const l=await gbooks("intitle:"+enc(t)+(a?"+inauthor:"+enc(a):"")+"&langRestrict=fr",8);const x=l.find(x=>fr(x.synopsis)&&simT(x.title,t));if(x)syn=x.synopsis}
   if(!syn&&t&&!light)syn=fr(await olSyn(t,a));
-  let img=(g&&g.img)||"";
-  if(img&&!(await imgReal(img)))img=""
-  if(!img&&isbn){
-    const i10=isbn10(String(isbn).replace(/[^0-9Xx]/g,"")),cand=["https://covers.openlibrary.org/b/isbn/"+isbn+"-L.jpg?default=false",
-      "https://books.google.com/books/content?vid=ISBN"+isbn+"&printsec=frontcover&img=1&zoom=1"];
-    if(i10)cand.push("https://m.media-amazon.com/images/P/"+i10+".01.L.jpg");
-    for(const u of cand){if(await imgReal(u)){img=u;break}}
-  }
+  let img="";
+  const i10=isbn?isbn10(String(isbn).replace(/[^0-9Xx]/g,"")):"";
+  if(i10){const u="https://m.media-amazon.com/images/P/"+i10+".01.L.jpg";if(await imgReal(u))img=u} /* 1) Amazon */
+  if(!img){img=(g&&g.img)||"";if(img&&!(await imgReal(img)))img=""} /* 2) Google Books */
+  if(!img&&isbn){for(const u of ["https://covers.openlibrary.org/b/isbn/"+isbn+"-L.jpg?default=false","https://books.google.com/books/content?vid=ISBN"+isbn+"&printsec=frontcover&img=1&zoom=1"]){if(await imgReal(u)){img=u;break}}} /* 3) autres sites */
   if(!img&&t){/* ISBN inconnu des bases : on cherche par titre/auteur (fréquent pour les BD) */
     const l=await gbooks("intitle:"+enc(t)+(a?"+inauthor:"+enc(a):""),6);const x=l.find(x=>x.img&&simT(x.title,t));if(x&&await imgReal(x.img))img=x.img}
   const meta={publisher:[g&&g.publisher,o&&o.publisher,od&&od.publisher].filter(Boolean).join(" "),year:(g&&g.year)||(o&&o.year)||(od&&od.year)||0,cats:g&&g.cats,subjects:od&&od.subjects,format:o&&o.format,height:(g&&g.height)||(o&&o.height)||0};
@@ -634,7 +650,7 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.series?" · "+r.series+" tome "+r.tome:"")+(r.synopsis||$("#f_y").value?"":" (synopsis en français introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v18 · 14/11/2026";
+const APP_VERSION="v19 · 14/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const CATOK=["poche","grand","ancien","bd"];let memCat="";
 const lastCat=()=>{
@@ -963,7 +979,6 @@ function openDet(s,id){
   let acts="";
   if(s==="me"&&me.can)acts+=`<button class="btn sm ghost" data-a="share" ${d}>Partager</button>`;
   else if(s!=="me"){if(!b.borrowedBy)acts+=`<button class="btn sm" data-a="borrow" ${d}>Emprunter</button>`;else if(b.borrowedBy===uid)acts+=`<button class="btn sm" data-a="ret" ${d}>Rendre</button>`;if(own)acts+=`<button class="btn sm ghost" data-a="priv" ${d}>Rendre privé</button>`}
-  if(own)acts+=`<button class="btn sm ghost" data-a="del" ${d} style="color:var(--acc)">Supprimer</button>`;
   $("#detc").innerHTML=`<div class="dbig">${cover(b)}</div><h3 class="dtt">${esc(b.title)}</h3><div class="au dau">${esc(b.author||"Auteur inconnu")}</div><div class="chips dch">${chips}</div>`
     +(b.isbn?`<div class="au" style="margin-top:12px;color:var(--mute);font-size:.85rem;text-align:center">ISBN ${esc(b.isbn)}</div>`:"")
     +(b.synopsis?`<p class="syn">${esc(b.synopsis)}</p>`:"")
@@ -1178,8 +1193,8 @@ const isOurs=u=>/\/storage\/v1\/object\/public\/covers\//.test(u||"");
 const isbn10=i=>{if(!/^978\d{10}$/.test(i))return"";const d=i.slice(3,12);let s=0;for(let k=0;k<9;k++)s+=(10-k)*+d[k];const c=(11-s%11)%11;return d+(c===10?"X":String(c))};
 async function fetchCover(b){
   const i=String(b.isbn||"").replace(/[^0-9Xx]/g,""),src=[],t=isbn10(i);
+  if(t)src.push("https://m.media-amazon.com/images/P/"+t+".01.L.jpg"); /* Amazon d'abord : jaquettes plus belles */
   if(b.img&&!isOurs(b.img))src.push(b.img);
-  if(t)src.push("https://m.media-amazon.com/images/P/"+t+".01.L.jpg");
   src.push("https://covers.openlibrary.org/b/isbn/"+i+"-L.jpg?default=false");
   src.push("https://books.google.com/books/content?vid=ISBN"+i+"&printsec=frontcover&img=1&zoom=2");
   if(t)src.push("https://covers.openlibrary.org/b/isbn/"+t+"-L.jpg?default=false");
