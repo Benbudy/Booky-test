@@ -112,6 +112,11 @@ input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;display
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
 .stat b{display:block;font-size:1.8rem;color:var(--acc)}
+details.acc{margin-top:14px}
+details.acc>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-family:inherit;font-weight:700;font-size:1.15rem;padding:6px 0;color:var(--ink);-webkit-tap-highlight-color:transparent}
+details.acc>summary::-webkit-details-marker{display:none}
+details.acc>summary::after{content:"▾";font-size:.9rem;color:var(--mute);transition:transform .2s}
+details.acc[open]>summary::after{transform:rotate(180deg)}
 .set{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
 nav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:calc(env(safe-area-inset-bottom,0px)*.35)}
 nav button{flex:1;background:none;border:0;color:var(--mute);padding:6px 2px 4px;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:.66rem}
@@ -177,14 +182,11 @@ input[type=checkbox]{width:auto;padding:0}
 
 <div id="v-set" hidden>
   <h2>Réglages</h2>
-  <div class="cats" id="settabs"><button data-p="gen" class="on">Général</button><button data-p="imp">Import / export</button></div>
-  <div class="sp sp-gen">
   <div id="stats"></div>
   <div class="set"><span>Apparence</span>
     <select id="theme"><option value="">Automatique</option><option value="light">Clair</option><option value="dark">Sombre</option></select>
   </div>
-  </div><div class="sp sp-imp" hidden>
-  <h2>Importer / exporter</h2>
+  <details class="acc"><summary>Importer / exporter</summary>
   <div class="set" style="display:block">
     <label class="lb" style="margin-top:0">Importer un fichier CSV (livres ou BD)</label>
     <select id="im_w"><option value="me">Dans mes livres (privé)</option><option value="fam">Dans la bibliothèque familiale</option></select>
@@ -204,15 +206,15 @@ input[type=checkbox]{width:auto;padding:0}
     <label class="lb" style="margin-top:16px">Exporter en CSV</label>
     <div class="row"><select id="ex_w"><option value="me">Mes livres privés</option><option value="fam">Bibliothèque familiale</option><option value="all">Tout</option></select><button class="btn ghost sm" id="ex_b" type="button" style="flex:none">Exporter</button></div>
   </div>
-  </div><div class="sp sp-gen">
-  <h2>Compte</h2>
+  </details>
+  <details class="acc"><summary>Compte</summary>
   <div class="set" style="display:block"><div id="acc" style="color:var(--mute);font-size:.85rem"></div>
   <label class="lb">Prénom affiché</label><div class="row"><input id="s_n" maxlength="40"><button class="btn sm" id="s_nb" style="flex:none">Enregistrer</button></div>
   <label class="lb">Nouveau mot de passe</label><div class="row"><input id="s_p" type="password" autocomplete="new-password" placeholder="6 caractères min."><button class="btn sm" id="s_pb" style="flex:none">Changer</button></div>
   <div class="acts" style="margin-top:14px"><button class="btn ghost sm" id="s_ex">Exporter mes livres</button><button class="btn ghost sm" id="out">Se déconnecter</button><button class="btn ghost sm" id="s_del" style="color:var(--acc)">Supprimer mon compte</button></div>
   <div id="s_m" style="font-size:.8rem;color:var(--mute);margin-top:8px"></div></div>
+  </details>
   <div id="appver" class="mu" style="text-align:center;margin:18px 0 6px;font-size:.78rem"></div>
-  </div>
 <div id="v-adm" hidden><h2>Administration</h2><div id="adm"></div></div>
 </div>
 <div id="msg"></div>
@@ -594,7 +596,7 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.series?" · "+r.series+" tome "+r.tome:"")+(r.synopsis||$("#f_y").value?"":" (synopsis en français introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v15 · 13/11/2026";
+const APP_VERSION="v16 · 14/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const CATOK=["poche","grand","ancien","bd"];let memCat="";
 const lastCat=()=>{
@@ -943,7 +945,6 @@ function openIdea(k){
 $("#list").onclick=onTile;$("#exp").onclick=onTile;
 $("#detx").onclick=()=>$("#det").close();
 $("#det").onclick=e=>{if(e.target===$("#det")){$("#det").close();return}if(e.target.closest("button[data-a]")){$("#det").close();onAct(e)}};
-$("#settabs").onclick=e=>{const b=e.target.closest("button[data-p]");if(!b)return;document.querySelectorAll("#settabs button").forEach(x=>x.classList.toggle("on",x===b));document.querySelectorAll("#v-set .sp").forEach(x=>x.hidden=!x.classList.contains("sp-"+b.dataset.p));scrollTo(0,0)};
 $("#nav").onclick=e=>{const b=e.target.closest("button[data-t]");if(b){selMode=false;sel=new Set();tab=b.dataset.t;render();if(tab==="set")loadAdmin();scrollTo(0,0)}};
 $("#q").oninput=render;let F={st:"",r:0,a:"",b:"",s:"title",cv:""};
 const skey=b=>b.series?norm(b.series):"~";
