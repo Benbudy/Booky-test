@@ -97,8 +97,22 @@ input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;display
 .cats button[data-c=grand].on{background:#2f6fba;border-color:#2f6fba}
 .cats button[data-c=ancien].on{background:#7a4e2d;border-color:#7a4e2d}
 .cats button[data-c=bd].on{background:#e6b422;border-color:#e6b422;color:#2b2320}
-.scan{display:flex;gap:10px;align-items:center;margin-top:12px}
-.scan .cov{margin:0;width:54px;height:78px}
+.scan{display:flex;gap:14px;align-items:flex-start;margin-top:12px}
+.scan .scr{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+.scan .scr .btn{width:100%;justify-content:center;padding:13px 14px;font-size:.95rem}
+#covsheet .btn{width:100%;justify-content:center;padding:14px;font-size:1rem;margin-top:10px}
+#covsheet .btn.ghost{background:var(--chip);color:var(--ink)}
+#dlg .foot{gap:12px;margin-top:20px}#dlg .foot .btn{flex:1;justify-content:center;padding:13px}
+#det .dbig{display:flex;justify-content:center;margin:4px 0 16px}
+#det .dbig .cov{width:min(70%,300px);height:auto;aspect-ratio:2/3;margin:0}
+#det .dbig .gen.has .cvi{object-fit:contain}
+#det .dtt{margin:0;font-size:1.3rem;text-align:center;word-break:break-word}
+#det .dau{text-align:center;color:var(--mute);margin-top:4px}
+#det .dch{justify-content:center;margin-top:10px}
+.dacts{margin-top:20px;display:flex;flex-direction:column;gap:10px}
+.dacts .dmain{width:100%;justify-content:center;padding:14px;font-size:1rem}
+.dacts .acts{justify-content:center}
+.scan .cov{margin:0;width:84px;height:122px}#pv{flex:none;min-width:84px}
 #scst{font-size:.8rem;color:var(--mute);margin-top:6px}
 .bd{padding:12px;flex:1;min-width:0}
 .bd h3{margin:0;font-size:1.05rem;word-break:break-word}
@@ -248,9 +262,15 @@ input[type=checkbox]{width:auto;padding:0}
 <div class="foot"><button class="btn ghost" id="x_reset">Réinitialiser</button><button class="btn" id="x_ok">Appliquer</button></div></dialog>
 <dialog id="det"><div id="detc"></div><div class="foot"><button class="btn ghost" id="detx">Fermer</button></div></dialog>
 
+<dialog id="covsheet"><h2 style="margin:0 0 4px">Couverture</h2>
+<button class="btn" id="cs_photo" type="button">📷 Prendre une photo / choisir une image</button>
+<button class="btn" id="cs_paste" type="button">📋 Coller l’image copiée</button>
+<button class="btn ghost" id="cs_auto" type="button">🔎 Chercher automatiquement</button>
+<button class="btn ghost" id="cs_del" type="button" style="color:var(--acc)">🗑️ Retirer la couverture</button>
+<button class="btn ghost" id="cs_x" type="button">Annuler</button></dialog>
 <dialog id="dlg">
   <h2 id="dt" style="margin:0 0 4px">Nouveau livre</h2>
-  <div class="scan"><div id="pv"></div><div><button class="btn sm" id="codebtn" type="button">📷 Scanner avec la caméra</button> <button class="btn ghost sm" id="scanbtn" type="button">Photo de la couverture</button> <button class="btn ghost sm" id="pastebtn" type="button">📋 Coller une image</button> <button class="btn sm" id="batchbtn" type="button">⚡ Scan en rafale</button><div id="scst"></div></div></div>
+  <div class="scan"><div id="pv"></div><div class="scr"><button class="btn" id="covbtn" type="button">🖼️ Couverture</button><button class="btn ghost" id="codebtn" type="button">📷 Scanner le code-barres</button><button class="btn ghost" id="batchbtn" type="button">⚡ Scan en rafale</button><div id="scst"></div></div></div>
   <label>ISBN</label><div class="row"><input id="f_i" inputmode="numeric" maxlength="20" placeholder="978…"><button class="btn ghost sm" id="lookup" type="button" style="flex:none">Chercher</button></div>
   <input type="file" id="file" accept="image/*" hidden>
   <input type="file" id="file2" accept="image/*" hidden>
@@ -475,7 +495,8 @@ function openDlg(b,w){
   $("#f_w").value=(w==="me"||!me.can)?"me":"fam";$("#f_w").disabled=!!b||!me.can;
   $("#f_c").value=b?(b.cat||"poche"):lastCat();curImg=b&&b.img||"";$("#f_i").value=b&&b.isbn||"";$("#f_y").value=b&&b.synopsis||"";showPv();
   catTouched=false;catAuto=false;
-  $("#scst").textContent="Scanne le code-barres pour retrouver le livre, sa jaquette, son synopsis et son format.";
+  $("#codebtn").hidden=!!b;$("#batchbtn").hidden=!!b;
+  $("#scst").textContent=b?"":"Scanne le code-barres pour retrouver le livre, sa jaquette, son synopsis et son format.";
   document.querySelector(`input[name=col][value="${b&&b.color||COLORS[0]}"]`).checked=true;
   $("#dlg").showModal();
 }
@@ -484,8 +505,15 @@ $("#f_c").onchange=()=>{catTouched=true;if(!editing)saveCat($("#f_c").value)};
 
 function showPv(){$("#pv").innerHTML=curImg?`<img class="cov" alt="" src="${esc(curImg)}">`:""}
 function shrink(f,mx,my){return new Promise((ok,ko)=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const r=Math.min(1,(mx||300)/im.width,(my||440)/im.height),c=document.createElement("canvas");c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(bl=>{const fr=new FileReader();fr.onload=()=>ok({url:fr.result,blob:bl});fr.readAsDataURL(bl)},"image/jpeg",.72)};im.onerror=ko;im.src=u})}
-$("#scanbtn").onclick=()=>$("#file").click();
-$("#pastebtn").onclick=async()=>{const bl=await clipImage();if(!bl)return;try{curImg=(await shrink(bl)).url;showPv();say("Image collée comme jaquette.")}catch(_){say("Image illisible.")}};
+$("#covbtn").onclick=()=>{$("#cs_auto").textContent="🔎 Chercher automatiquement";$("#covsheet").showModal()};
+$("#cs_x").onclick=()=>$("#covsheet").close();
+$("#cs_photo").onclick=()=>{$("#covsheet").close();$("#file").click()};
+$("#cs_paste").onclick=async()=>{const bl=await clipImage();if(!bl)return;try{curImg=(await shrink(bl)).url;showPv();$("#covsheet").close();say("Image collée à la place de la couverture.")}catch(_){say("Image illisible.")}};
+$("#cs_del").onclick=()=>{curImg="";showPv();$("#covsheet").close();say("Couverture retirée.")};
+$("#cs_auto").onclick=async()=>{const t=$("#cs_auto");t.textContent="Recherche…";t.disabled=true;
+  try{const r=await findInfo({isbn:$("#f_i").value.trim(),title:$("#f_t").value.trim(),author:$("#f_a").value.trim(),light:true});
+    if(r.img){curImg=r.img;showPv();$("#covsheet").close();say("Couverture trouvée.")}else t.textContent="Aucune couverture trouvée"}
+  catch(_){t.textContent="Recherche impossible"}t.disabled=false};
 $("#codebtn").onclick=()=>{batch=false;startCam()};
 $("#batchbtn").onclick=()=>{if(editing)return;if(!confirm("Scan en rafale : chaque code-barres scanné ajoute directement le livre (catégorie, statut et destination choisis ci-dessus), sans fiche à valider. Touche « Terminer » à la fin. Continuer ?"))return;batch=true;batchQ=[];batchSeen=new Set();batchStat={ok:0,dup:0,miss:[]};batchDone=[];saveCat($("#f_c").value);$("#camx").textContent="Terminer";startCam()};
 $("#camph").onclick=()=>{if($("#cam").open)$("#cam").close();else stopCam();$("#file2").click()};
@@ -606,7 +634,7 @@ async function lookup(isbn){
   say(r.title?"Livre trouvé"+(r.series?" · "+r.series+" tome "+r.tome:"")+(r.synopsis||$("#f_y").value?"":" (synopsis en français introuvable)")+(r.cat&&!editing?" · catégorie : "+CATS[r.cat]:"")+". Vérifie les champs puis enregistre.":"ISBN "+isbn+" introuvable : saisis le titre à la main.");
 }
 let camStream=null,camTimer=0,camReader=null,camBusy=false,camDone=false;
-const APP_VERSION="v17 · 14/11/2026";
+const APP_VERSION="v18 · 14/11/2026";
 try{document.getElementById("appver").textContent="BOOKY "+APP_VERSION}catch(_){}
 const CATOK=["poche","grand","ancien","bd"];let memCat="";
 const lastCat=()=>{
@@ -845,12 +873,14 @@ $("#save").onclick=async()=>{
   const title=$("#f_t").value.trim();if(!title){$("#f_t").focus();return}
   const data={title,author:$("#f_a").value.trim(),status:$("#f_s").value,rating:+$("#f_r").value,color:document.querySelector("input[name=col]:checked").value,cat:$("#f_c").value,img:curImg||"",isbn:$("#f_i").value.trim(),synopsis:$("#f_y").value.trim(),series:$("#f_se").value.trim()||null,tome:$("#f_to").value===""?null:parseInt($("#f_to").value)};
   {const old=editing&&[...mine,...fam].find(x=>x.id===editing.id),had=old&&(old.series||old.tome!=null);if(!had){if(data.series==null)delete data.series;if(data.tome==null)delete data.tome}}
+  if(/^data:/.test(data.img)&&!demo){try{const bl=await (await fetch(data.img)).blob();data.img=await upImg(bl,"p-"+(editing?editing.id:"n")+"-"+Date.now().toString(36)+".jpg")}catch(_){}}
   const needCat=false;
   if(!data.img||!data.synopsis||needCat){$("#save").disabled=true;try{const r=await findInfo({isbn:data.isbn,title,author:data.author});if(!data.img&&r.img)data.img=r.img;if(!data.synopsis)data.synopsis=r.synopsis;if(!data.isbn&&data.cat!=="ancien")data.isbn=r.isbn;if(needCat&&r.cat)data.cat=r.cat}catch(_){}}
   if(!editing)saveCat(data.cat);
   try{
     if(editing)await sbw(d=>sb.from("books").update(d).eq("id",editing.id),data);
     else await sbw(d=>sb.from("books").insert(d),{...data,shared:$("#f_w").value==="fam"});
+    if(editing){const o=[...mine,...fam].find(x=>x.id===editing.id);if(o&&o.img&&o.img!==data.img&&isOurs(o.img)&&!(Array.isArray(o.pics)&&o.pics.includes(o.img)))rmFiles([{img:o.img}])}
     await load();
     $("#dlg").close();
   }catch(e){alert("Impossible d’enregistrer pour le moment.")}
@@ -926,13 +956,23 @@ $("#pf").onchange=async e=>{
 $("#detc").addEventListener("click",e=>{const t=e.target.closest(".pt");if(!t)return;const b=bookOf(curDet);if(b)openZoom(galleryOf(b),+t.dataset.g,curDet)});
 function openDet(s,id){
   const b=(s==="me"?mine:fam).find(x=>x.id===id);if(!b)return;
-  $("#detc").innerHTML=cardFull([{...b,_s:s}],s,"")+(b.isbn?`<div class="au" style="margin-top:8px;color:var(--mute);font-size:.85rem">ISBN ${esc(b.isbn)}</div>`:"");
-  $("#detc").insertAdjacentHTML("beforeend",(b.synopsis?`<p class="syn">${esc(b.synopsis)}</p>`:"")+(b.by===uid&&(!b.img||!b.synopsis)?`<button class="btn sm ghost" id="enr" style="margin-top:10px">Compléter couverture et synopsis</button>`:"")+(b.by===uid&&!demo?`<button class="btn sm ghost" id="pcov" style="margin-top:10px">📋 Coller une image comme couverture</button>`:""));
+  const own=b.by===uid,d=`data-s="${s}" data-id="${esc(b.id)}"`;
+  let chips=(b.series?`<span class="chip">${esc(b.series)}${b.tome!=null?" · T"+b.tome:""}</span>`:"")+`<span class="chip">${ST[b.status]||"À lire"}</span>`+(CATS[b.cat]?`<span class="chip">${CATS[b.cat]}</span>`:"");
+  if(+b.rating)chips+=`<span class="chip stars">${"★".repeat(b.rating)}</span>`;
+  if(s==="fam"){chips+=`<span class="chip">ajouté par ${esc(who(b.by))}</span>`;if(b.borrowedBy)chips+=`<span class="chip warn">chez ${esc(who(b.borrowedBy))}</span>`}
+  let acts="";
+  if(s==="me"&&me.can)acts+=`<button class="btn sm ghost" data-a="share" ${d}>Partager</button>`;
+  else if(s!=="me"){if(!b.borrowedBy)acts+=`<button class="btn sm" data-a="borrow" ${d}>Emprunter</button>`;else if(b.borrowedBy===uid)acts+=`<button class="btn sm" data-a="ret" ${d}>Rendre</button>`;if(own)acts+=`<button class="btn sm ghost" data-a="priv" ${d}>Rendre privé</button>`}
+  if(own)acts+=`<button class="btn sm ghost" data-a="del" ${d} style="color:var(--acc)">Supprimer</button>`;
+  $("#detc").innerHTML=`<div class="dbig">${cover(b)}</div><h3 class="dtt">${esc(b.title)}</h3><div class="au dau">${esc(b.author||"Auteur inconnu")}</div><div class="chips dch">${chips}</div>`
+    +(b.isbn?`<div class="au" style="margin-top:12px;color:var(--mute);font-size:.85rem;text-align:center">ISBN ${esc(b.isbn)}</div>`:"")
+    +(b.synopsis?`<p class="syn">${esc(b.synopsis)}</p>`:"")
+    +(own&&(!b.img||!b.synopsis)?`<button class="btn sm ghost" id="enr" style="margin-top:10px">Compléter couverture et synopsis</button>`:"");
   curDet={s,id};
   {const own=b.by===uid,g=galleryOf(b);
    if(own||g.length>1)$("#detc").insertAdjacentHTML("beforeend",`<div class="pics"><div class="ph"><b>Photos et pages${g.length?" ("+g.length+")":""}</b>${own&&!demo?'<button class="btn sm ghost" id="pa" type="button">+ Ajouter</button>':""}</div>${g.length?`<div class="pr">${g.map((u,k)=>`<img class="pt${u===b.img?" cv":""}" data-g="${k}" loading="lazy" decoding="async" alt="" src="${esc(u)}">`).join("")}</div>`:'<div class="mu">Ajoute des photos de pages, de la tranche ou une autre couverture, puis choisis celle à afficher.</div>'}</div>`);}
+  $("#detc").insertAdjacentHTML("beforeend",`<div class="dacts">${own?`<button class="btn dmain" data-a="edit" ${d}>Modifier la fiche</button>`:""}${acts?`<div class="acts">${acts}</div>`:""}</div>`);
   const pa=$("#pa");if(pa)pa.onclick=()=>$("#pf").click();
-  const pc=$("#pcov");if(pc)pc.onclick=async()=>{const bl=await clipImage();if(!bl)return;pc.textContent="Envoi…";pc.disabled=true;await setCoverFromBlob(b,bl)};
   const en=$("#enr");if(en)en.onclick=async()=>{en.textContent="Recherche…";const g=await findInfo({isbn:b.isbn,title:b.title,author:b.author});if(!g.img&&!g.synopsis){en.textContent="Rien trouvé";return}const img=b.img||g.img;try{await ok(sb.from("books").update({img,synopsis:b.synopsis||g.synopsis,isbn:b.isbn||g.isbn}).eq("id",b.id));await load();openDet(s,id)}catch(_){en.textContent="Échec"}};
   if(!$("#det").open)$("#det").showModal();
 }
